@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connetti a RainMachine",
+        "description": "Inserisci i dati di connessione al tuo RainMachine.",
+        "data": {
+          "host": "Host (indirizzo IP)",
+          "port": "Porta",
+          "password": "Password",
+          "scan_interval": "Intervallo di aggiornamento (minuti)",
+          "timeout": "Timeout connessione (secondi)"
+        }
+      },
+      "zones": {
+        "title": "Configurazione zone",
+        "description": "Seleziona le zone da monitorare e personalizza i nomi. Attiva/disattiva ogni zona e modifica il nome visualizzato."
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossibile connettersi al RainMachine. Verifica IP e porta.",
+      "invalid_auth": "Password non valida.",
+      "unknown": "Errore imprevisto."
+    },
+    "abort": {
+      "already_configured": "Questo RainMachine è già configurato."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Impostazioni RainMachine Pro",
+        "description": "Configura intervallo di aggiornamento, timeout e parser meteo attivi.",
+        "data": {
+          "scan_interval": "Intervallo di aggiornamento (minuti)",
+          "timeout": "Timeout connessione (secondi)",
+          "parsers": "Parser meteo attivi"
+        }
+      },
+      "zones": {
+        "title": "Configurazione zone",
+        "description": "Seleziona le zone da monitorare e personalizza i nomi."
+      }
+    }
+  }
+}
