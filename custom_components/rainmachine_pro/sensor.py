@@ -76,7 +76,7 @@ async def async_setup_entry(
 class RainMachineBaseEntity(CoordinatorEntity):
     """Base entity for RainMachine Pro."""
 
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -86,6 +86,15 @@ class RainMachineBaseEntity(CoordinatorEntity):
         """Initialize base entity."""
         super().__init__(coordinator)
         self._entry = entry
+
+    def _get_lang(self) -> str:
+        """Get HA language prefix (it, en, de, fr, es)."""
+        try:
+            lang = self.hass.config.language or "en"
+        except Exception:
+            lang = "en"
+        prefix = lang[:2].lower()
+        return prefix if prefix in ("it", "en", "de", "fr", "es") else "en"
 
     @property
     def device_info(self):
@@ -246,6 +255,8 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         """Return extra attributes matching AppDaemon format."""
+        lang = self._get_lang()
+        flag_map = FLAG_MAP.get(lang, FLAG_MAP["en"])
         zone = self._get_zone_data()
         if not zone:
             return {
@@ -253,25 +264,42 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
                 "userDuration_unit": "min",
                 "realDuration": 0,
                 "realDuration_unit": "min",
-                "userDuration_display": "0 min previsti",
-                "realDuration_display": "0 min effettivi",
+                "userDuration_display": "0 min previsti" if lang == "it" else "0 min scheduled",
+                "realDuration_display": "0 min effettivi" if lang == "it" else "0 min actual",
                 "startTime": None,
-                "flag": "Nessuna irrigazione oggi",
+                "flag": flag_map.get(-1, "No watering today"),
                 "icon": "mdi:sprinkler",
             }
         cycle = zone.get("cycles", [{}])[0]
         real_dur = int(cycle.get("realDuration", 0)) // 60
         user_dur = int(cycle.get("userDuration", 0)) // 60
         flag = zone.get("flag", -1)
+
+        if lang == "it":
+            user_label = "previsti"
+            real_label = "effettivi"
+        elif lang == "de":
+            user_label = "geplant"
+            real_label = "tatsächlich"
+        elif lang == "fr":
+            user_label = "prévus"
+            real_label = "effectifs"
+        elif lang == "es":
+            user_label = "previstos"
+            real_label = "efectivos"
+        else:
+            user_label = "scheduled"
+            real_label = "actual"
+
         return {
             "userDuration": user_dur,
             "userDuration_unit": "min",
             "realDuration": real_dur,
             "realDuration_unit": "min",
-            "userDuration_display": f"{user_dur} min previsti",
-            "realDuration_display": f"{real_dur} min effettivi",
+            "userDuration_display": f"{user_dur} min {user_label}",
+            "realDuration_display": f"{real_dur} min {real_label}",
             "startTime": cycle.get("startTime"),
-            "flag": FLAG_MAP.get(flag, "Nessuna irrigazione oggi"),
+            "flag": flag_map.get(flag, flag_map.get(-1, "No watering today")),
             "icon": "mdi:sprinkler",
         }
 
@@ -377,68 +405,28 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
 
     def _get_day_label(self, delta: int) -> str:
         """Get translated day label."""
-        try:
-            from homeassistant.core import HomeAssistant
-            lang = self.hass.config.language if self.hass else "en"
-        except Exception:
-            lang = "en"
+        lang = self._get_lang()
 
-        if lang.startswith("it"):
-            day_names = {
-                0: "Lunedì", 1: "Martedì", 2: "Mercoledì",
-                3: "Giovedì", 4: "Venerdì", 5: "Sabato", 6: "Domenica",
-            }
-            if delta == -1:
-                return "Ieri"
-            if delta == 0:
-                return "Oggi"
-            if delta == 1:
-                return "Domani"
-        elif lang.startswith("de"):
-            day_names = {
-                0: "Montag", 1: "Dienstag", 2: "Mittwoch",
-                3: "Donnerstag", 4: "Freitag", 5: "Samstag", 6: "Sonntag",
-            }
-            if delta == -1:
-                return "Gestern"
-            if delta == 0:
-                return "Heute"
-            if delta == 1:
-                return "Morgen"
-        elif lang.startswith("fr"):
-            day_names = {
-                0: "Lundi", 1: "Mardi", 2: "Mercredi",
-                3: "Jeudi", 4: "Vendredi", 5: "Samedi", 6: "Dimanche",
-            }
-            if delta == -1:
-                return "Hier"
-            if delta == 0:
-                return "Aujourd'hui"
-            if delta == 1:
-                return "Demain"
-        elif lang.startswith("es"):
-            day_names = {
-                0: "Lunes", 1: "Martes", 2: "Miércoles",
-                3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo",
-            }
-            if delta == -1:
-                return "Ayer"
-            if delta == 0:
-                return "Hoy"
-            if delta == 1:
-                return "Mañana"
-        else:
-            day_names = {
-                0: "Monday", 1: "Tuesday", 2: "Wednesday",
-                3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday",
-            }
-            if delta == -1:
-                return "Yesterday"
-            if delta == 0:
-                return "Today"
-            if delta == 1:
-                return "Tomorrow"
+        day_names_map = {
+            "it": {0: "Lunedì", 1: "Martedì", 2: "Mercoledì", 3: "Giovedì", 4: "Venerdì", 5: "Sabato", 6: "Domenica"},
+            "de": {0: "Montag", 1: "Dienstag", 2: "Mittwoch", 3: "Donnerstag", 4: "Freitag", 5: "Samstag", 6: "Sonntag"},
+            "fr": {0: "Lundi", 1: "Mardi", 2: "Mercredi", 3: "Jeudi", 4: "Vendredi", 5: "Samedi", 6: "Dimanche"},
+            "es": {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"},
+            "en": {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"},
+        }
+        relative_map = {
+            "it": {-1: "Ieri", 0: "Oggi", 1: "Domani"},
+            "de": {-1: "Gestern", 0: "Heute", 1: "Morgen"},
+            "fr": {-1: "Hier", 0: "Aujourd'hui", 1: "Demain"},
+            "es": {-1: "Ayer", 0: "Hoy", 1: "Mañana"},
+            "en": {-1: "Yesterday", 0: "Today", 1: "Tomorrow"},
+        }
 
+        relatives = relative_map.get(lang, relative_map["en"])
+        if delta in relatives:
+            return relatives[delta]
+
+        day_names = day_names_map.get(lang, day_names_map["en"])
         target = datetime.today().date() + timedelta(days=delta)
         return day_names.get(target.weekday(), str(target))
 
@@ -469,9 +457,21 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
         data, delta = self._get_forecast_day()
         if not data:
             return {}
+        lang = self._get_lang()
         code = data.get("condition", -1)
         condition = WEATHER_CONDITIONS.get(code, "unknown")
-        state_translated = WEATHER_CONDITIONS_TRANSLATED.get(condition, "Sconosciuto")
+        conditions_translated = WEATHER_CONDITIONS_TRANSLATED.get(lang, WEATHER_CONDITIONS_TRANSLATED["en"])
+        state_translated = conditions_translated.get(condition, conditions_translated.get("unknown", "Unknown"))
+
+        # Translated labels for rain
+        rain_labels = {
+            "it": {"rain": "di pioggia", "forecast": "di pioggia prevista"},
+            "de": {"rain": "Regen", "forecast": "Regen vorhergesagt"},
+            "fr": {"rain": "de pluie", "forecast": "de pluie prévue"},
+            "es": {"rain": "de lluvia", "forecast": "de lluvia prevista"},
+            "en": {"rain": "rain", "forecast": "rain forecast"},
+        }
+        labels = rain_labels.get(lang, rain_labels["en"])
 
         return {
             "temperature": int(data.get("temperature", 0)),
@@ -485,10 +485,10 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
             "max_temperature_display": f"{int(data.get('maxTemp', 0))}° max",
             "rain": data.get("rain", 0),
             "rain_unit": "mm",
-            "rain_display": f"{data.get('rain', 0)} mm di pioggia",
+            "rain_display": f"{data.get('rain', 0)} mm {labels['rain']}",
             "precipitation_forecast": data.get("qpf", 0),
             "precipitation_forecast_unit": "mm",
-            "precipitation_forecast_display": f"{data.get('qpf', 0)} mm di pioggia prevista",
+            "precipitation_forecast_display": f"{data.get('qpf', 0)} mm {labels['forecast']}",
             "EvapoTranspiration": data.get("et0final", 0),
             "EvapoTranspiration_unit": "mm",
             "EvapoTranspiration_display": f"{data.get('et0final', 0)} mm",
