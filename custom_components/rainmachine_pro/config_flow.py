@@ -8,6 +8,11 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigEntry, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .api import RainMachineClient, RainMachineAuthError, RainMachineConnectionError
 from .const import (
@@ -183,9 +188,15 @@ class RainMachineProOptionsFlow(OptionsFlow):
                     vol.Optional(
                         CONF_PARSERS,
                         default=current.get(CONF_PARSERS, list(AVAILABLE_PARSERS.keys())),
-                    ): vol.All(
-                        vol.Coerce(list),
-                        [vol.In({k: v["friendly_name"] for k, v in AVAILABLE_PARSERS.items()})],
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                {"value": k, "label": v["friendly_name"]}
+                                for k, v in AVAILABLE_PARSERS.items()
+                            ],
+                            multiple=True,
+                            mode=SelectSelectorMode.LIST,
+                        )
                     ),
                 }
             ),
