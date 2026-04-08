@@ -1,7 +1,9 @@
 # RainMachine Pro for Home Assistant
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=yashijoe&repository=ha-rainmachine-pro&category=integration)
 
 A custom Home Assistant integration for **RainMachine** smart irrigation controllers. Connects directly to your RainMachine via its local API — no cloud required.
 
@@ -26,12 +28,9 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 
 ### HACS (recommended)
 
-1. Open HACS in Home Assistant
-2. Go to **Integrations**
-3. Click the three dots menu (top right) → **Custom repositories**
-4. Add `https://github.com/yashijoe/ha-rainmachine-pro` as an **Integration**
-5. Search for "RainMachine Pro" and install it
-6. Restart Home Assistant
+1. Click the button above, or open HACS in Home Assistant and search for **RainMachine Pro**
+2. Install the integration
+3. Restart Home Assistant
 
 ### Manual
 
