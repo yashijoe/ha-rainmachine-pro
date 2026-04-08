@@ -4,9 +4,9 @@
   "codeowners": ["@yashijoe"],
   "config_flow": true,
   "documentation": "https://github.com/yashijoe/ha-rainmachine-pro",
+  "integration_type": "device",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/yashijoe/ha-rainmachine-pro/issues",
   "requirements": [],
-  "version": "1.0.0",
-  "integration_type": "device"
+  "version": "1.0.0"
 }
