@@ -4,6 +4,7 @@ import logging
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -94,7 +95,7 @@ class RainMachineZoneEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
 
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:cog"
-    _attr_entity_category = "config"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator, entry, uid: int, zone_name: str) -> None:
         super().__init__(coordinator, entry)
@@ -169,7 +170,7 @@ class RainMachineProgramEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
 
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:cog"
-    _attr_entity_category = "config"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
         super().__init__(coordinator, entry)
@@ -208,7 +209,7 @@ class RainMachineFreezeProtectionSwitch(RainMachineBaseEntity, SwitchEntity):
 
     _attr_name = "Freeze protection"
     _attr_icon = "mdi:snowflake"
-    _attr_entity_category = "config"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator, entry) -> None:
         super().__init__(coordinator, entry)
@@ -244,7 +245,7 @@ class RainMachineExtraWaterSwitch(RainMachineBaseEntity, SwitchEntity):
 
     _attr_name = "Extra water on hot days"
     _attr_icon = "mdi:thermometer-water"
-    _attr_entity_category = "config"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator, entry) -> None:
         super().__init__(coordinator, entry)
