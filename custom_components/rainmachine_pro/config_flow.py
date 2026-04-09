@@ -21,11 +21,13 @@ from .const import (
     CONF_PORT,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
+    CONF_SCAN_INTERVAL_FAST,
     CONF_TIMEOUT,
     CONF_ZONES,
     CONF_PARSERS,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL_FAST,
     DEFAULT_TIMEOUT,
     AVAILABLE_PARSERS,
 )
@@ -81,6 +83,9 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
                     ): vol.All(int, vol.Range(min=1, max=60)),
                     vol.Optional(
+                        CONF_SCAN_INTERVAL_FAST, default=DEFAULT_SCAN_INTERVAL_FAST
+                    ): vol.All(int, vol.Range(min=5, max=60)),
+                    vol.Optional(
                         CONF_TIMEOUT, default=DEFAULT_TIMEOUT
                     ): vol.All(int, vol.Range(min=5, max=120)),
                 }
@@ -120,6 +125,9 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                 options={
                     CONF_SCAN_INTERVAL: self._user_input.get(
                         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                    ),
+                    CONF_SCAN_INTERVAL_FAST: self._user_input.get(
+                        CONF_SCAN_INTERVAL_FAST, DEFAULT_SCAN_INTERVAL_FAST
                     ),
                     CONF_TIMEOUT: self._user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
                     CONF_ZONES: zones,
@@ -181,6 +189,10 @@ class RainMachineProOptionsFlow(OptionsFlow):
                         CONF_SCAN_INTERVAL,
                         default=current.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                     ): vol.All(int, vol.Range(min=1, max=60)),
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL_FAST,
+                        default=current.get(CONF_SCAN_INTERVAL_FAST, DEFAULT_SCAN_INTERVAL_FAST),
+                    ): vol.All(int, vol.Range(min=5, max=60)),
                     vol.Optional(
                         CONF_TIMEOUT,
                         default=current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),

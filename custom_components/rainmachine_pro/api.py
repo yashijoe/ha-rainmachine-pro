@@ -204,6 +204,23 @@ class RainMachineClient:
             await self.authenticate(session)
             return await self.get_zones(session)
 
+    async def fetch_fast_data(self) -> dict:
+        """Fetch only zones, programs and queue (for fast polling)."""
+        async with aiohttp.ClientSession() as session:
+            await self.authenticate(session)
+            data = {}
+            for key, coro in [
+                ("zones",    self.get_zones(session)),
+                ("programs", self.get_programs(session)),
+                ("queue",    self.get_watering_queue(session)),
+            ]:
+                try:
+                    data[key] = await coro
+                except RainMachineApiError as err:
+                    _LOGGER.warning("Fast fetch %s failed: %s", key, err)
+                    data[key] = []
+            return data
+
     async def fetch_all_data(self) -> dict:
         """Fetch all data in one authenticated session."""
         async with aiohttp.ClientSession() as session:

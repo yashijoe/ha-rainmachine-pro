@@ -12,11 +12,13 @@ from .const import (
     CONF_PORT,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
+    CONF_SCAN_INTERVAL_FAST,
     CONF_TIMEOUT,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL_FAST,
     DEFAULT_TIMEOUT,
 )
-from .coordinator import RainMachineProCoordinator
+from .coordinator import RainMachineProCoordinator, RainMachineProFastCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,15 +31,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     port = entry.data[CONF_PORT]
     password = entry.data[CONF_PASSWORD]
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    scan_interval_fast = entry.options.get(CONF_SCAN_INTERVAL_FAST, DEFAULT_SCAN_INTERVAL_FAST)
     timeout = entry.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
 
     client = RainMachineClient(host, port, password, timeout)
     coordinator = RainMachineProCoordinator(hass, client, scan_interval)
+    fast_coordinator = RainMachineProFastCoordinator(hass, client, scan_interval_fast)
 
     await coordinator.async_config_entry_first_refresh()
+    await fast_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
+    hass.data[DOMAIN][f"{entry.entry_id}_fast"] = fast_coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -56,4 +62,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(f"{entry.entry_id}_fast", None)
     return unload_ok

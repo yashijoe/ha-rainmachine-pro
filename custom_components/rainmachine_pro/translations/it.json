@@ -9,6 +9,7 @@
           "port": "Porta",
           "password": "Password",
           "scan_interval": "Intervallo di aggiornamento (minuti)",
+          "scan_interval_fast": "Intervallo aggiornamento zone/programmi (secondi)",
           "timeout": "Timeout connessione (secondi)"
         }
       },
@@ -33,6 +34,7 @@
         "description": "Configura intervallo di aggiornamento, timeout e parser meteo attivi.",
         "data": {
           "scan_interval": "Intervallo di aggiornamento (minuti)",
+          "scan_interval_fast": "Intervallo aggiornamento zone/programmi (secondi)",
           "timeout": "Timeout connessione (secondi)",
           "parsers": "Parser meteo attivi"
         }

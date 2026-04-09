@@ -6,13 +6,15 @@ CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_PASSWORD = "password"
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_SCAN_INTERVAL_FAST = "scan_interval_fast"
 CONF_TIMEOUT = "timeout"
 CONF_ZONES = "zones"
 CONF_PARSERS = "parsers"
 
 DEFAULT_PORT = 8080
-DEFAULT_SCAN_INTERVAL = 5  # minutes
-DEFAULT_TIMEOUT = 20  # seconds
+DEFAULT_SCAN_INTERVAL = 5       # minutes
+DEFAULT_SCAN_INTERVAL_FAST = 10  # seconds
+DEFAULT_TIMEOUT = 20             # seconds
 
 # Parser key -> (search string in RM description, entity suffix, friendly name)
 AVAILABLE_PARSERS = {

@@ -9,6 +9,7 @@
           "port": "Port",
           "password": "Mot de passe",
           "scan_interval": "Intervalle de mise à jour (minutes)",
+          "scan_interval_fast": "Intervalle de mise à jour zones/programmes (secondes)",
           "timeout": "Délai de connexion (secondes)"
         }
       },
@@ -33,6 +34,7 @@
         "description": "Configurez l'intervalle de mise à jour, le délai et les sources météo actives.",
         "data": {
           "scan_interval": "Intervalle de mise à jour (minutes)",
+          "scan_interval_fast": "Intervalle de mise à jour zones/programmes (secondes)",
           "timeout": "Délai de connexion (secondes)",
           "parsers": "Sources météo actives"
         }

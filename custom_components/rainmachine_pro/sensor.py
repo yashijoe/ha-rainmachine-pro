@@ -71,19 +71,20 @@ async def async_setup_entry(
     for i in range(7):
         entities.append(RainMachineForecastSensor(coordinator, entry, i))
 
-    # Run completion time — one per zone
-    for zone in coordinator.data.get("zones", []):
+    # Run completion time — use fast coordinator for real-time updates
+    fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
+
+    for zone in fast_coordinator.data.get("zones", []):
         entities.append(
             RainMachineZoneRunCompletionTime(
-                coordinator, entry, zone["uid"], zone.get("name", f"Zone {zone['uid']}")
+                fast_coordinator, entry, zone["uid"], zone.get("name", f"Zone {zone['uid']}")
             )
         )
 
-    # Run completion time — one per program
-    for program in coordinator.data.get("programs", []):
+    for program in fast_coordinator.data.get("programs", []):
         entities.append(
             RainMachineProgramRunCompletionTime(
-                coordinator, entry, program["uid"], program.get("name", f"Program {program['uid']}")
+                fast_coordinator, entry, program["uid"], program.get("name", f"Program {program['uid']}")
             )
         )
 

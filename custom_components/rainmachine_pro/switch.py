@@ -24,20 +24,21 @@ async def async_setup_entry(
 ) -> None:
     """Set up switch entities from a config entry."""
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
+    fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     entities: list[SwitchEntity] = []
 
-    # Zone switches — one pair per zone from the API
-    for zone in coordinator.data.get("zones", []):
+    # Zone switches — run uses fast coordinator, enabled uses slow
+    for zone in fast_coordinator.data.get("zones", []):
         uid = zone["uid"]
         name = zone.get("name", f"Zone {uid}")
-        entities.append(RainMachineZoneRunSwitch(coordinator, entry, uid, name))
+        entities.append(RainMachineZoneRunSwitch(fast_coordinator, entry, uid, name))
         entities.append(RainMachineZoneEnabledSwitch(coordinator, entry, uid, name))
 
-    # Program switches — one pair per program
-    for program in coordinator.data.get("programs", []):
+    # Program switches — run uses fast coordinator, enabled uses slow
+    for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
         name = program.get("name", f"Program {pid}")
-        entities.append(RainMachineProgramRunSwitch(coordinator, entry, pid, name))
+        entities.append(RainMachineProgramRunSwitch(fast_coordinator, entry, pid, name))
         entities.append(RainMachineProgramEnabledSwitch(coordinator, entry, pid, name))
 
     # Global switches

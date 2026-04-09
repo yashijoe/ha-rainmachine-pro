@@ -9,6 +9,7 @@
           "port": "Puerto",
           "password": "Contraseña",
           "scan_interval": "Intervalo de actualización (minutos)",
+          "scan_interval_fast": "Intervalo de actualización zonas/programas (segundos)",
           "timeout": "Tiempo de espera de conexión (segundos)"
         }
       },
@@ -33,6 +34,7 @@
         "description": "Configura el intervalo de actualización, el tiempo de espera y las fuentes meteorológicas activas.",
         "data": {
           "scan_interval": "Intervalo de actualización (minutos)",
+          "scan_interval_fast": "Intervalo de actualización zonas/programas (segundos)",
           "timeout": "Tiempo de espera de conexión (segundos)",
           "parsers": "Fuentes meteorológicas activas"
         }
