@@ -20,7 +20,7 @@ from .coordinator import RainMachineProCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor", "number"]
+PLATFORMS = ["sensor", "number", "binary_sensor", "button", "switch", "select", "update"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

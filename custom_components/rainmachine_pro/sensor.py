@@ -24,6 +24,7 @@ from .const import (
     WEATHER_ICONS,
 )
 from .coordinator import RainMachineProCoordinator
+from .entity import RainMachineBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,42 +71,25 @@ async def async_setup_entry(
     for i in range(7):
         entities.append(RainMachineForecastSensor(coordinator, entry, i))
 
+    # Run completion time — one per zone
+    for zone in coordinator.data.get("zones", []):
+        entities.append(
+            RainMachineZoneRunCompletionTime(
+                coordinator, entry, zone["uid"], zone.get("name", f"Zone {zone['uid']}")
+            )
+        )
+
+    # Run completion time — one per program
+    for program in coordinator.data.get("programs", []):
+        entities.append(
+            RainMachineProgramRunCompletionTime(
+                coordinator, entry, program["uid"], program.get("name", f"Program {program['uid']}")
+            )
+        )
+
     async_add_entities(entities)
 
 
-class RainMachineBaseEntity(CoordinatorEntity):
-    """Base entity for RainMachine Pro."""
-
-    _attr_has_entity_name = True
-
-    def __init__(
-        self,
-        coordinator: RainMachineProCoordinator,
-        entry: ConfigEntry,
-    ) -> None:
-        """Initialize base entity."""
-        super().__init__(coordinator)
-        self._entry = entry
-
-    def _get_lang(self) -> str:
-        """Get HA language prefix (it, en, de, fr, es)."""
-        try:
-            lang = self.hass.config.language or "en"
-        except Exception:
-            lang = "en"
-        prefix = lang[:2].lower()
-        return prefix if prefix in ("it", "en", "de", "fr", "es") else "en"
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": "RainMachine",
-            "manufacturer": "RainMachine",
-            "model": "Pro",
-            "configuration_url": f"https://{self._entry.data.get('host', '')}:{self._entry.data.get('port', 8080)}",
-        }
 
 
 class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
@@ -504,3 +488,55 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
             "state_translated": state_translated,
             "icon": f"mdi:weather-{condition}",
         }
+
+
+# ---------------------------------------------------------------------------
+# Run completion time sensors
+# ---------------------------------------------------------------------------
+
+class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
+    """Sensor: when the current zone run will finish."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:timer-outline"
+    _attr_entity_category = "diagnostic"
+
+    def __init__(self, coordinator, entry, uid: int, zone_name: str) -> None:
+        super().__init__(coordinator, entry)
+        self._uid = uid
+        self._attr_name = f"{zone_name} run completion time"
+        self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_run_completion"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return estimated completion time or None if not running."""
+        for item in self.coordinator.data.get("queue", []):
+            if item.get("zid") == self._uid and item.get("running"):
+                remaining = item.get("remaining", 0)
+                if remaining > 0:
+                    return datetime.now().astimezone() + timedelta(seconds=remaining)
+        return None
+
+
+class RainMachineProgramRunCompletionTime(RainMachineBaseEntity, SensorEntity):
+    """Sensor: when the current program run will finish (current zone remaining)."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:timer-outline"
+    _attr_entity_category = "diagnostic"
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
+        super().__init__(coordinator, entry)
+        self._pid = pid
+        self._attr_name = f"{program_name} run completion time"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_run_completion"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return estimated completion time or None if not running."""
+        for item in self.coordinator.data.get("queue", []):
+            if item.get("pid") == self._pid and item.get("running"):
+                remaining = item.get("remaining", 0)
+                if remaining > 0:
+                    return datetime.now().astimezone() + timedelta(seconds=remaining)
+        return None

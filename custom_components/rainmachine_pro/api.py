@@ -47,7 +47,6 @@ class RainMachineClient:
 
     def _url(self, path: str, query: str = "format") -> str:
         """Build URL with token."""
-        sep = "&" if "?" in path else "?"
         base = f"{self._base_url}/{path}"
         if query:
             base = f"{base}?{query}"
@@ -61,11 +60,10 @@ class RainMachineClient:
         url = f"{self._base_url}/auth/login"
         payload = json.dumps({"pwd": self._password, "remember": 1})
         headers = {"Content-Type": "application/json"}
-
         try:
             async with session.post(
                 url, data=payload, headers=headers,
-                ssl=self._ssl_context, timeout=self._timeout
+                ssl=self._ssl_context, timeout=self._timeout,
             ) as resp:
                 resp.raise_for_status()
                 text = await resp.text()
@@ -84,7 +82,7 @@ class RainMachineClient:
         url = self._url(path, query)
         try:
             async with session.get(
-                url, ssl=self._ssl_context, timeout=self._timeout
+                url, ssl=self._ssl_context, timeout=self._timeout,
             ) as resp:
                 resp.raise_for_status()
                 text = await resp.text()
@@ -99,7 +97,7 @@ class RainMachineClient:
         try:
             async with session.post(
                 url, data=json.dumps(payload), headers=headers,
-                ssl=self._ssl_context, timeout=self._timeout
+                ssl=self._ssl_context, timeout=self._timeout,
             ) as resp:
                 resp.raise_for_status()
                 text = await resp.text()
@@ -107,88 +105,129 @@ class RainMachineClient:
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise RainMachineConnectionError(f"POST {path} failed: {err}") from err
 
+    # -------------------------------------------------------------------------
+    # Data fetch methods (used by coordinator with shared session)
+    # -------------------------------------------------------------------------
+
     async def get_parsers(self, session: aiohttp.ClientSession) -> list:
-        """Get parser data."""
         data = await self._get(session, "parser")
         return data.get("parsers", [])
 
     async def get_watering_today(self, session: aiohttp.ClientSession) -> dict:
-        """Get today watering summary."""
-        data = await self._get(session, "watering/log")
-        return data
+        return await self._get(session, "watering/log")
 
     async def get_watering_details(self, session: aiohttp.ClientSession) -> dict:
-        """Get watering details by zone."""
-        data = await self._get(session, "watering/log/details")
-        return data
+        return await self._get(session, "watering/log/details")
 
     async def get_forecast(self, session: aiohttp.ClientSession) -> dict:
-        """Get forecast conditions."""
-        data = await self._get(session, "mixer", query="format=json")
-        return data
+        return await self._get(session, "mixer", query="format=json")
 
     async def get_rain_delay(self, session: aiohttp.ClientSession) -> dict:
-        """Get rain delay status."""
-        data = await self._get(session, "restrictions/raindelay")
-        return data
+        return await self._get(session, "restrictions/raindelay")
 
     async def get_zones(self, session: aiohttp.ClientSession) -> list:
-        """Get zone configuration."""
         data = await self._get(session, "zone")
         return data.get("zones", [])
 
+    async def get_programs(self, session: aiohttp.ClientSession) -> list:
+        data = await self._get(session, "program")
+        return data.get("programs", [])
+
+    async def get_restrictions_currently(self, session: aiohttp.ClientSession) -> dict:
+        return await self._get(session, "restrictions/currently")
+
+    async def get_restrictions_global(self, session: aiohttp.ClientSession) -> dict:
+        return await self._get(session, "restrictions/global")
+
+    async def get_watering_queue(self, session: aiohttp.ClientSession) -> list:
+        data = await self._get(session, "watering/queue")
+        return data.get("queue", [])
+
+    async def get_provision(self, session: aiohttp.ClientSession) -> dict:
+        return await self._get(session, "provision")
+
+    async def get_machine_update(self, session: aiohttp.ClientSession) -> dict:
+        return await self._get(session, "machine/update")
+
+    # -------------------------------------------------------------------------
+    # Action methods (each opens its own session)
+    # -------------------------------------------------------------------------
+
+    async def _action(self, path: str, payload: dict) -> dict:
+        """Execute a POST action with its own authenticated session."""
+        async with aiohttp.ClientSession() as session:
+            await self.authenticate(session)
+            return await self._post(session, path, payload)
+
     async def set_rain_delay(self, session: aiohttp.ClientSession, days: int) -> dict:
-        """Set rain delay in days."""
-        return await self._post(
-            session, "restrictions/raindelay", {"rainDelay": days}
-        )
+        return await self._post(session, "restrictions/raindelay", {"rainDelay": days})
+
+    async def action_start_zone(self, zid: int, duration: int = 600) -> dict:
+        """Start a zone for `duration` seconds (default 10 min)."""
+        return await self._action(f"zone/{zid}/start", {"time": duration})
+
+    async def action_stop_zone(self, zid: int) -> dict:
+        return await self._action(f"zone/{zid}/stop", {"zid": zid})
+
+    async def action_set_zone_active(self, zid: int, active: bool) -> dict:
+        return await self._action(f"zone/{zid}/properties", {"active": active})
+
+    async def action_start_program(self, pid: int) -> dict:
+        return await self._action(f"program/{pid}/start", {"pid": pid})
+
+    async def action_stop_program(self, pid: int) -> dict:
+        return await self._action(f"program/{pid}/stop", {"pid": pid})
+
+    async def action_set_program_active(self, pid: int, active: bool) -> dict:
+        return await self._action(f"program/{pid}", {"active": active})
+
+    async def action_set_global_restriction(self, payload: dict) -> dict:
+        return await self._action("restrictions/global", payload)
+
+    async def action_reboot(self) -> dict:
+        return await self._action("machine/reboot", {})
+
+    async def action_start_update(self) -> dict:
+        return await self._action("machine/update", {})
+
+    # -------------------------------------------------------------------------
+    # Setup helpers
+    # -------------------------------------------------------------------------
 
     async def test_connection(self) -> bool:
-        """Test if connection works."""
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             return True
 
     async def fetch_zones(self) -> list:
-        """Fetch zone list (used during setup)."""
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             return await self.get_zones(session)
 
     async def fetch_all_data(self) -> dict:
-        """Fetch all data in one call."""
+        """Fetch all data in one authenticated session."""
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
-
             data = {}
-            try:
-                data["parsers"] = await self.get_parsers(session)
-            except RainMachineApiError as err:
-                _LOGGER.warning("Failed to get parsers: %s", err)
-                data["parsers"] = []
 
-            try:
-                data["watering"] = await self.get_watering_today(session)
-            except RainMachineApiError as err:
-                _LOGGER.warning("Failed to get watering: %s", err)
-                data["watering"] = {}
-
-            try:
-                data["details"] = await self.get_watering_details(session)
-            except RainMachineApiError as err:
-                _LOGGER.warning("Failed to get zone details: %s", err)
-                data["details"] = {}
-
-            try:
-                data["forecast"] = await self.get_forecast(session)
-            except RainMachineApiError as err:
-                _LOGGER.warning("Failed to get forecast: %s", err)
-                data["forecast"] = {}
-
-            try:
-                data["raindelay"] = await self.get_rain_delay(session)
-            except RainMachineApiError as err:
-                _LOGGER.warning("Failed to get rain delay: %s", err)
-                data["raindelay"] = {}
+            for key, coro in [
+                ("parsers",                  self.get_parsers(session)),
+                ("watering",                 self.get_watering_today(session)),
+                ("details",                  self.get_watering_details(session)),
+                ("forecast",                 self.get_forecast(session)),
+                ("raindelay",                self.get_rain_delay(session)),
+                ("zones",                    self.get_zones(session)),
+                ("programs",                 self.get_programs(session)),
+                ("restrictions_currently",   self.get_restrictions_currently(session)),
+                ("restrictions_global",      self.get_restrictions_global(session)),
+                ("queue",                    self.get_watering_queue(session)),
+                ("provision",                self.get_provision(session)),
+                ("machine_update",           self.get_machine_update(session)),
+            ]:
+                try:
+                    data[key] = await coro
+                except RainMachineApiError as err:
+                    _LOGGER.warning("Failed to fetch %s: %s", key, err)
+                    data[key] = {} if key not in ("parsers", "zones", "programs", "queue") else []
 
             return data
