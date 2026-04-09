@@ -21,7 +21,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Firmware update** — trigger firmware updates from the Home Assistant update panel
 - **Reboot button** — reboot the controller directly from Home Assistant
 - **Fully configurable from UI** — no YAML needed
-- **Multi-language** — English and Italian translations included
+- **Multi-language** — English, Italian, French, German, and Spanish translations included
 
 ## Requirements
 
