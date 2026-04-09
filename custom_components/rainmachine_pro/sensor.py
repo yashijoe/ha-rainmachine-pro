@@ -1,7 +1,7 @@
 """Sensor platform for RainMachine Pro."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -96,7 +96,7 @@ class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
     """Sensor for today's total watering duration."""
 
     _attr_native_unit_of_measurement = "min"
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.TOTAL
     _attr_icon = "mdi:sprinkler"
     _attr_name = "Today watering"
 
@@ -105,6 +105,12 @@ class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_today_watering"
         self.entity_id = "sensor.rainmachine_today_watering"
+
+    @property
+    def last_reset(self) -> datetime:
+        """Return midnight of today (local time, UTC-aware)."""
+        now = datetime.now().astimezone()
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     @property
     def native_value(self):
