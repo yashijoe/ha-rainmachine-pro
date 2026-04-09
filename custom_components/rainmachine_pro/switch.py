@@ -65,10 +65,10 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return True if zone is currently running."""
-        for zone in self.coordinator.data.get("zones", []):
-            if zone["uid"] == self._uid:
-                return zone.get("state", 0) != 0
+        """Return True if zone is currently running (check queue, not zone state)."""
+        for item in self.coordinator.data.get("queue", []):
+            if item.get("zid") == self._uid and item.get("running"):
+                return True
         return False
 
     async def async_turn_on(self, **kwargs) -> None:
@@ -142,10 +142,10 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return True if program is currently running."""
-        for program in self.coordinator.data.get("programs", []):
-            if program["uid"] == self._pid:
-                return program.get("status", 0) != 0
+        """Return True if program is currently running (check queue, not program status)."""
+        for item in self.coordinator.data.get("queue", []):
+            if item.get("pid") == self._pid and item.get("running"):
+                return True
         return False
 
     async def async_turn_on(self, **kwargs) -> None:
