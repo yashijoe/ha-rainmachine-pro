@@ -12,9 +12,14 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Local polling** — communicates directly with your RainMachine on your LAN
 - **Today's watering summary** — total irrigation duration with statistics support for long-term tracking
 - **Per-zone details** — scheduled vs actual duration, start time, and skip reason for each zone
+- **Zone and program control** — start/stop irrigation zones and programs, enable/disable them
 - **Rain delay control** — view current delay status and set new delays directly from Home Assistant
-- **Weather parser status** — last run timestamp for each configured weather source (MET.NO, OpenWeather, Weather Underground, personal stations)
-- **7-day forecast** — daily weather condition, temperature (min/max), rain, precipitation forecast, and evapotranspiration from RainMachine's mixer data
+- **Freeze protection** — enable/disable and set the freeze protection temperature threshold
+- **Restriction monitoring** — binary sensors for all active watering restrictions
+- **Weather parser status** — last run timestamp for each configured weather source
+- **7-day forecast** — daily weather condition, temperature, rain, and evapotranspiration
+- **Firmware update** — trigger firmware updates from the Home Assistant update panel
+- **Reboot button** — reboot the controller directly from Home Assistant
 - **Fully configurable from UI** — no YAML needed
 - **Multi-language** — English and Italian translations included
 
@@ -60,21 +65,66 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 
 ## Entities
 
+Zone and program names are defined by the user inside the RainMachine app and will appear exactly as configured (e.g., "Front Garden", "Lawn", "Summer Program").
+
 ### Sensors
 
 | Entity | Description | Unit | State Class |
 |--------|-------------|------|-------------|
-| `sensor.rainmachine_today_watering` | Total actual irrigation time today | min | `measurement` |
+| `sensor.rainmachine_today_watering` | Total actual irrigation time today | min | `total` |
 | `sensor.rainmachine_rain_delay` | Current rain delay status | — | — |
-| `sensor.rainmachine_zone_1` ... `zone_4` | Per-zone watering details | min | `measurement` |
+| `sensor.rainmachine_zone_<n>` | Per-zone watering details | min | `measurement` |
 | `sensor.rainmachine_parser_*` | Last run time for each weather parser | — | `timestamp` |
-| `sensor.rainmachine_forecast_0` ... `forecast_6` | Daily forecast (yesterday through +5 days) | — | — |
+| `sensor.rainmachine_forecast_<n>` | Daily forecast (yesterday through +5 days) | — | — |
+| `sensor.<zone>_run_completion_time` | Estimated end time for currently running zone | — | `timestamp` |
+| `sensor.<program>_run_completion_time` | Estimated end time for currently running program | — | `timestamp` |
+
+### Binary Sensors
+
+| Entity | Description |
+|--------|-------------|
+| `binary_sensor.rainmachine_freeze_restriction` | Active freeze restriction |
+| `binary_sensor.rainmachine_hourly_restriction` | Active hourly restriction |
+| `binary_sensor.rainmachine_month_restriction` | Active month restriction |
+| `binary_sensor.rainmachine_rain_delay_restriction` | Active rain delay restriction |
+| `binary_sensor.rainmachine_weekday_restriction` | Active weekday restriction |
+| `binary_sensor.rainmachine_rain_sensor` | Rain sensor triggered (disabled by default) |
+| `binary_sensor.rainmachine_flow_sensor` | Flow sensor active (disabled by default) |
+
+### Switches
+
+| Entity | Description |
+|--------|-------------|
+| `switch.<zone_name>` | Start/stop a zone manually (10 min default) |
+| `switch.<zone_name>_enabled` | Enable/disable a zone |
+| `switch.<program_name>` | Start/stop a program |
+| `switch.<program_name>_enabled` | Enable/disable a program |
+| `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
+| `switch.rainmachine_extra_water_on_hot_days` | Enable/disable extra watering on hot days |
 
 ### Number
 
 | Entity | Description | Range |
 |--------|-------------|-------|
 | `number.rainmachine_rain_delay_days` | Set rain delay | 0–14 days |
+
+### Select
+
+| Entity | Description | Options |
+|--------|-------------|---------|
+| `select.rainmachine_freeze_protection_temperature` | Freeze protection threshold | −7 °C to +4 °C |
+
+### Button
+
+| Entity | Description |
+|--------|-------------|
+| `button.rainmachine_reboot` | Reboot the RainMachine controller |
+
+### Update
+
+| Entity | Description |
+|--------|-------------|
+| `update.rainmachine_firmware` | Firmware update status and trigger |
 
 ### Sensor Attributes
 
@@ -166,8 +216,15 @@ The integration polls your RainMachine's local API at the configured interval. A
 | `/api/4/parser` | Weather parser status |
 | `/api/4/watering/log` | Today's watering summary |
 | `/api/4/watering/log/details` | Per-zone watering details |
+| `/api/4/watering/queue` | Currently running zones/programs |
 | `/api/4/mixer` | Forecast conditions |
+| `/api/4/zone` | Zone list and status |
+| `/api/4/program` | Program list and status |
+| `/api/4/restrictions/currently` | Active restrictions |
+| `/api/4/restrictions/global` | Global restriction settings |
 | `/api/4/restrictions/raindelay` | Rain delay status (GET/POST) |
+| `/api/4/provision` | Device info and hardware version |
+| `/api/4/machine/update` | Firmware update status |
 
 Each API call has an independent timeout — if one endpoint is slow or unreachable, the others still update normally.
 
@@ -182,6 +239,8 @@ Each API call has an independent timeout — if one endpoint is slow or unreacha
 **Statistics graph shows "No statistics found"** — Statistics start collecting after the integration is installed. Historical data from before installation is not available.
 
 **Slow response / timeouts** — Increase the timeout value in the integration options. The `/watering/log/details` endpoint on some RainMachine models can take 15–20 seconds to respond.
+
+**Zone/program switches not appearing** — Zones and programs are loaded at setup time. If you add new zones or programs in the RainMachine app, reload the integration from **Settings** → **Devices & Services** → **RainMachine Pro** → **⋮** → **Reload**.
 
 ## Contributing
 
