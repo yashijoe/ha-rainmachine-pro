@@ -51,7 +51,8 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
    - **Host**: IP address of your RainMachine (e.g., `192.168.50.2`)
    - **Port**: API port (default: `8080`)
    - **Password**: your RainMachine password
-   - **Update interval**: polling frequency in minutes (default: `5`, range: 1–60)
+   - **Update interval**: slow polling frequency in minutes (default: `5`, range: 1–60) — weather, forecast, restrictions, firmware
+   - **Zone/program update interval**: fast polling frequency in seconds (default: `10`, range: 5–60) — zone and program run state
    - **Timeout**: connection timeout in seconds (default: `20`, range: 5–120)
 4. Click **Submit**
 
@@ -59,7 +60,8 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 
 Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Configure** to change:
 
-- Update interval and timeout
+- Update interval (slow, minutes) and zone/program update interval (fast, seconds)
+- Timeout
 - Active weather parsers (select which ones generate sensors)
 - Zone names (customize the friendly name for each irrigation zone)
 
@@ -206,7 +208,10 @@ cards:
 
 ## How It Works
 
-The integration polls your RainMachine's local API at the configured interval. All communication happens on your LAN — no cloud services are involved.
+The integration polls your RainMachine's local API using two independent coordinators. All communication happens on your LAN — no cloud services are involved.
+
+- **Slow coordinator** (default every 5 min) — weather parsers, forecast, restrictions, rain delay, provision, firmware update
+- **Fast coordinator** (default every 10 s) — zone list, program list, watering queue (used by run switches and run completion time sensors)
 
 **API endpoints used:**
 
