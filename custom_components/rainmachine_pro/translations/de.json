@@ -20,6 +20,10 @@
       "programs": {
         "title": "Programm-Konfiguration",
         "description": "Wählen Sie die zu überwachenden und steuernden Programme aus. Aktivieren/deaktivieren Sie jedes Programm und ändern Sie optional den Anzeigenamen."
+      },
+      "parsers": {
+        "title": "Wetter-Parser-Konfiguration",
+        "description": "Wählen Sie, welche Wetter-Parser als Entitäten in Home Assistant angezeigt werden sollen. Parser, die bereits ausgeführt wurden, sind standardmäßig aktiviert."
       }
     },
     "error": {
@@ -50,6 +54,10 @@
       "programs_options": {
         "title": "Programm-Konfiguration",
         "description": "Wählen Sie die zu überwachenden und steuernden Programme aus. Aktivieren/deaktivieren Sie jedes Programm und ändern Sie optional den Anzeigenamen."
+      },
+      "parsers_options": {
+        "title": "Wetter-Parser-Konfiguration",
+        "description": "Wählen Sie, welche Wetter-Parser als Entitäten in Home Assistant angezeigt werden sollen."
       }
     }
   }

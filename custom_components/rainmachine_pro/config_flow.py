@@ -8,11 +8,6 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigEntry, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers.selector import (
-    SelectSelector,
-    SelectSelectorConfig,
-    SelectSelectorMode,
-)
 
 from .api import RainMachineClient, RainMachineAuthError, RainMachineConnectionError
 from .const import (
@@ -30,7 +25,6 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL_FAST,
     DEFAULT_TIMEOUT,
-    AVAILABLE_PARSERS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -46,7 +40,9 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
         self._user_input: dict[str, Any] = {}
         self._available_zones: list[dict] = []
         self._available_programs: list[dict] = []
+        self._available_parsers: list[dict] = []
         self._zone_config: dict = {}
+        self._program_config: dict = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -65,6 +61,7 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                 await client.test_connection()
                 self._available_zones = await client.fetch_zones()
                 self._available_programs = await client.fetch_programs()
+                self._available_parsers = await client.fetch_parsers()
             except RainMachineAuthError:
                 errors["base"] = "invalid_auth"
             except RainMachineConnectionError:
@@ -142,6 +139,38 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                 enabled = user_input.get(f"program_{pid}_enabled", True)
                 name = user_input.get(f"program_{pid}_name", rm_name)
                 programs[pid] = {"name": name, "rm_name": rm_name, "enabled": enabled}
+            self._program_config = programs
+            return await self.async_step_parsers()
+
+        schema_dict = {}
+        for program in self._available_programs:
+            pid = program["uid"]
+            rm_name = program.get("name", f"Program {pid}")
+            schema_dict[vol.Optional(f"program_{pid}_name", default=rm_name)] = str
+            schema_dict[vol.Optional(f"program_{pid}_enabled", default=True)] = bool
+
+        return self.async_show_form(
+            step_id="programs",
+            data_schema=vol.Schema(schema_dict),
+            description_placeholders={"program_count": str(len(self._available_programs))},
+        )
+
+    async def async_step_parsers(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle parser selection step."""
+        if user_input is not None or not self._available_parsers:
+            parsers = {}
+            for parser in self._available_parsers:
+                uid = str(parser.get("uid", ""))
+                if not uid:
+                    continue
+                desc = parser.get("description", f"Parser {uid}")
+                has_run = (user_input or {}).get(
+                    f"parser_{uid}_enabled",
+                    parser.get("lastRun") not in (None, "unknown", ""),
+                )
+                parsers[uid] = {"description": desc, "enabled": bool(has_run)}
 
             host = self._user_input[CONF_HOST]
             await self.async_set_unique_id(f"rainmachine_pro_{host}")
@@ -163,22 +192,25 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                     ),
                     CONF_TIMEOUT: self._user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
                     CONF_ZONES: self._zone_config,
-                    CONF_PROGRAMS: programs,
-                    CONF_PARSERS: list(AVAILABLE_PARSERS.keys()),
+                    CONF_PROGRAMS: self._program_config,
+                    CONF_PARSERS: parsers,
                 },
             )
 
         schema_dict = {}
-        for program in self._available_programs:
-            pid = program["uid"]
-            rm_name = program.get("name", f"Program {pid}")
-            schema_dict[vol.Optional(f"program_{pid}_name", default=rm_name)] = str
-            schema_dict[vol.Optional(f"program_{pid}_enabled", default=True)] = bool
+        for parser in self._available_parsers:
+            uid = str(parser.get("uid", ""))
+            if not uid:
+                continue
+            has_run = parser.get("lastRun") not in (None, "unknown", "")
+            schema_dict[
+                vol.Optional(f"parser_{uid}_enabled", default=has_run)
+            ] = bool
 
         return self.async_show_form(
-            step_id="programs",
+            step_id="parsers",
             data_schema=vol.Schema(schema_dict),
-            description_placeholders={"program_count": str(len(self._available_programs))},
+            description_placeholders={"parser_count": str(len(self._available_parsers))},
         )
 
     @staticmethod
@@ -196,6 +228,8 @@ class RainMachineProOptionsFlow(OptionsFlow):
         self._config_entry = config_entry
         self._general_options: dict[str, Any] = {}
         self._zone_options: dict[str, Any] = {}
+        self._program_options: dict[str, Any] = {}
+        self._fresh_parsers_map: dict[str, dict] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -223,19 +257,6 @@ class RainMachineProOptionsFlow(OptionsFlow):
                         CONF_TIMEOUT,
                         default=current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
                     ): vol.All(int, vol.Range(min=5, max=120)),
-                    vol.Optional(
-                        CONF_PARSERS,
-                        default=current.get(CONF_PARSERS, list(AVAILABLE_PARSERS.keys())),
-                    ): SelectSelector(
-                        SelectSelectorConfig(
-                            options=[
-                                {"value": k, "label": v["friendly_name"]}
-                                for k, v in AVAILABLE_PARSERS.items()
-                            ],
-                            multiple=True,
-                            mode=SelectSelectorMode.LIST,
-                        )
-                    ),
                 }
             ),
         )
@@ -312,12 +333,8 @@ class RainMachineProOptionsFlow(OptionsFlow):
                 enabled = user_input.get(f"program_{pid}_enabled", prog_data.get("enabled", True))
                 name = user_input.get(f"program_{pid}_name", prog_data.get("name", rm_name))
                 programs[pid] = {"name": name, "rm_name": rm_name, "enabled": enabled}
-            options = {
-                **self._general_options,
-                CONF_ZONES: self._zone_options,
-                CONF_PROGRAMS: programs,
-            }
-            return self.async_create_entry(title="", data=options)
+            self._program_options = programs
+            return await self.async_step_parsers_options()
 
         current_programs = self._config_entry.options.get(CONF_PROGRAMS, {})
 
@@ -353,5 +370,80 @@ class RainMachineProOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id="programs_options",
+            data_schema=vol.Schema(schema_dict),
+        )
+
+    async def async_step_parsers_options(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage parser entity visibility."""
+        stored_parsers = self._config_entry.options.get(CONF_PARSERS, {})
+        # Migrate old list format gracefully
+        if isinstance(stored_parsers, list):
+            stored_parsers = {}
+
+        if user_input is not None:
+            # Build merged parser dict from fresh API data + user input
+            all_uid_strs = set(
+                list(self._fresh_parsers_map.keys()) + list(stored_parsers.keys())
+            )
+            parsers = {}
+            for uid_str in all_uid_strs:
+                fresh = self._fresh_parsers_map.get(uid_str, {})
+                stored = stored_parsers.get(uid_str, {})
+                desc = fresh.get("description") or (
+                    stored.get("description") if isinstance(stored, dict) else f"Parser {uid_str}"
+                )
+                default = stored.get("enabled", True) if isinstance(stored, dict) else True
+                enabled = user_input.get(f"parser_{uid_str}_enabled", default)
+                parsers[uid_str] = {"description": desc, "enabled": bool(enabled)}
+
+            options = {
+                **self._general_options,
+                CONF_ZONES: self._zone_options,
+                CONF_PROGRAMS: self._program_options,
+                CONF_PARSERS: parsers,
+            }
+            return self.async_create_entry(title="", data=options)
+
+        # Fetch fresh parser list from device
+        try:
+            host = self._config_entry.data[CONF_HOST]
+            port = self._config_entry.data[CONF_PORT]
+            password = self._config_entry.data[CONF_PASSWORD]
+            timeout = self._config_entry.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
+            client = RainMachineClient(host, port, password, timeout)
+            fresh_parsers = await client.fetch_parsers()
+            self._fresh_parsers_map = {
+                str(p["uid"]): p for p in fresh_parsers if p.get("uid")
+            }
+        except Exception:
+            _LOGGER.warning("Could not fetch parsers from RainMachine for options")
+            self._fresh_parsers_map = {}
+
+        # Union of fresh + previously stored UIDs
+        all_uid_strs = sorted(
+            set(list(self._fresh_parsers_map.keys()) + list(stored_parsers.keys())),
+            key=lambda x: int(x) if x.isdigit() else 0,
+        )
+
+        if not all_uid_strs:
+            # No parsers at all — skip straight to done
+            return await self.async_step_parsers_options(user_input={})
+
+        schema_dict = {}
+        for uid_str in all_uid_strs:
+            fresh = self._fresh_parsers_map.get(uid_str, {})
+            stored = stored_parsers.get(uid_str, {})
+            if isinstance(stored, dict) and "enabled" in stored:
+                default_enabled = stored["enabled"]
+            else:
+                default_enabled = fresh.get("lastRun") not in (None, "unknown", "")
+            schema_dict[
+                vol.Optional(f"parser_{uid_str}_enabled", default=default_enabled)
+            ] = bool
+
+        return self.async_show_form(
+            step_id="parsers_options",
             data_schema=vol.Schema(schema_dict),
         )

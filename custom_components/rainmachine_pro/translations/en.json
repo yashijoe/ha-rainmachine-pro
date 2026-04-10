@@ -20,6 +20,10 @@
       "programs": {
         "title": "Program Configuration",
         "description": "Select which programs to monitor and control. Enable/disable each program and optionally change the display name."
+      },
+      "parsers": {
+        "title": "Weather Parser Configuration",
+        "description": "Select which weather parsers to expose as entities in Home Assistant. Parsers that have already run are enabled by default."
       }
     },
     "error": {
@@ -50,6 +54,10 @@
       "programs_options": {
         "title": "Program Configuration",
         "description": "Select which programs to monitor and control. Enable/disable each program and optionally change the display name."
+      },
+      "parsers_options": {
+        "title": "Weather Parser Configuration",
+        "description": "Select which weather parsers to expose as entities in Home Assistant."
       }
     }
   }

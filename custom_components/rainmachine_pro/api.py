@@ -209,6 +209,12 @@ class RainMachineClient:
             await self.authenticate(session)
             return await self.get_programs(session)
 
+    async def fetch_parsers(self) -> list:
+        """Fetch parser list for setup/options flow."""
+        async with aiohttp.ClientSession() as session:
+            await self.authenticate(session)
+            return await self.get_parsers(session)
+
     async def fetch_fast_data(self) -> dict:
         """Fetch only zones, programs and queue (for fast polling)."""
         async with aiohttp.ClientSession() as session:

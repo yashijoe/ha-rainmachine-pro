@@ -1,6 +1,7 @@
 """Sensor platform for RainMachine Pro."""
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from homeassistant.components.sensor import (
@@ -19,7 +20,6 @@ from .const import (
     CONF_ZONES,
     CONF_PROGRAMS,
     CONF_PARSERS,
-    AVAILABLE_PARSERS,
     FLAG_MAP,
     WEATHER_CONDITIONS,
     WEATHER_CONDITIONS_TRANSLATED,
@@ -39,7 +39,6 @@ async def async_setup_entry(
     """Set up sensors from a config entry."""
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
     zones = entry.options.get(CONF_ZONES, {})
-    enabled_parsers = entry.options.get(CONF_PARSERS, list(AVAILABLE_PARSERS.keys()))
 
     entities: list[SensorEntity] = []
 
@@ -59,15 +58,23 @@ async def async_setup_entry(
                 )
             )
 
-    # Parser sensors
-    for parser_key in enabled_parsers:
-        if parser_key in AVAILABLE_PARSERS:
-            parser_info = AVAILABLE_PARSERS[parser_key]
-            entities.append(
-                RainMachineParserSensor(
-                    coordinator, entry, parser_key, parser_info
-                )
+    # Parser sensors — build from stored dict; migrate old list format if needed
+    parsers_config = entry.options.get(CONF_PARSERS, {})
+    if isinstance(parsers_config, list):
+        # Migration: old format was a list of string keys — enable all known parsers
+        parsers_config = {
+            str(p["uid"]): {"description": p.get("description", ""), "enabled": True}
+            for p in coordinator.data.get("parsers", [])
+            if p.get("uid") and p.get("description")
+        }
+    for uid_str, parser_cfg in parsers_config.items():
+        if not isinstance(parser_cfg, dict) or not parser_cfg.get("enabled", True):
+            continue
+        entities.append(
+            RainMachineParserSensor(
+                coordinator, entry, int(uid_str), parser_cfg.get("description", f"Parser {uid_str}")
             )
+        )
 
     # Forecast sensors (7 days: yesterday + today + 5 days)
     for i in range(7):
@@ -235,17 +242,15 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
         self.entity_id = f"sensor.rainmachine_uid{uid}_watering"
 
     def _get_zone_data(self) -> dict | None:
-        """Get zone data from coordinator."""
+        """Get zone data from coordinator, searching across all programs."""
         details = self.coordinator.data.get("details", {})
         all_days = details.get("waterLog", {}).get("days", [])
         if not all_days:
             return None
-        programs = all_days[0].get("programs", [])
-        if not programs:
-            return None
-        for zone in programs[0].get("zones", []):
-            if zone.get("uid") == self._uid:
-                return zone
+        for program in all_days[0].get("programs", []):
+            for zone in program.get("zones", []):
+                if zone.get("uid") == self._uid:
+                    return zone
         return None
 
     @property
@@ -314,21 +319,20 @@ class RainMachineParserSensor(RainMachineBaseEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    def __init__(self, coordinator, entry, parser_key: str, parser_info: dict):
+    def __init__(self, coordinator, entry, uid: int, description: str):
         """Initialize."""
         super().__init__(coordinator, entry)
-        self._parser_key = parser_key
-        self._search_string = parser_info["search"]
-        self._attr_unique_id = f"{entry.entry_id}_parser_{parser_key}"
-        self._attr_name = parser_info["friendly_name"]
-        self.entity_id = f"sensor.rainmachine_{parser_info['entity_suffix']}"
+        self._uid = uid
+        self._description = description
+        self._attr_unique_id = f"{entry.entry_id}_parser_{uid}"
+        self._attr_name = description
+        suffix = re.sub(r"[^a-z0-9]+", "_", description.lower()).strip("_")
+        self.entity_id = f"sensor.rainmachine_{suffix}_last_run"
 
     def _find_parser(self) -> dict | None:
-        """Find matching parser data."""
-        parsers = self.coordinator.data.get("parsers", [])
-        for parser in parsers:
-            desc = parser.get("description", "")
-            if self._search_string in desc:
+        """Find matching parser data by UID."""
+        for parser in self.coordinator.data.get("parsers", []):
+            if parser.get("uid") == self._uid:
                 return parser
         return None
 
