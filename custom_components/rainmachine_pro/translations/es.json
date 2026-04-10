@@ -19,7 +19,7 @@
       },
       "programs": {
         "title": "Configuración de programas",
-        "description": "Selecciona los programas a monitorizar y controlar."
+        "description": "Selecciona los programas a monitorizar y controlar. Activa/desactiva cada programa y cambia el nombre mostrado si lo deseas."
       }
     },
     "error": {
@@ -49,7 +49,7 @@
       },
       "programs_options": {
         "title": "Configuración de programas",
-        "description": "Selecciona los programas a monitorizar y controlar."
+        "description": "Selecciona los programas a monitorizar y controlar. Activa/desactiva cada programa y cambia el nombre mostrado si lo deseas."
       }
     }
   }

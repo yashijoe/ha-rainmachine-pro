@@ -19,7 +19,7 @@
       },
       "programs": {
         "title": "Programm-Konfiguration",
-        "description": "Wählen Sie die zu überwachenden und steuernden Programme aus."
+        "description": "Wählen Sie die zu überwachenden und steuernden Programme aus. Aktivieren/deaktivieren Sie jedes Programm und ändern Sie optional den Anzeigenamen."
       }
     },
     "error": {
@@ -49,7 +49,7 @@
       },
       "programs_options": {
         "title": "Programm-Konfiguration",
-        "description": "Wählen Sie die zu überwachenden und steuernden Programme aus."
+        "description": "Wählen Sie die zu überwachenden und steuernden Programme aus. Aktivieren/deaktivieren Sie jedes Programm und ändern Sie optional den Anzeigenamen."
       }
     }
   }

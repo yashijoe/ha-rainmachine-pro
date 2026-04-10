@@ -140,7 +140,8 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                 pid = str(program["uid"])
                 rm_name = program.get("name", f"Program {pid}")
                 enabled = user_input.get(f"program_{pid}_enabled", True)
-                programs[pid] = {"name": rm_name, "enabled": enabled}
+                name = user_input.get(f"program_{pid}_name", rm_name)
+                programs[pid] = {"name": name, "rm_name": rm_name, "enabled": enabled}
 
             host = self._user_input[CONF_HOST]
             await self.async_set_unique_id(f"rainmachine_pro_{host}")
@@ -171,6 +172,7 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
         for program in self._available_programs:
             pid = program["uid"]
             rm_name = program.get("name", f"Program {pid}")
+            schema_dict[vol.Optional(f"program_{pid}_name", default=rm_name)] = str
             schema_dict[vol.Optional(f"program_{pid}_enabled", default=True)] = bool
 
         return self.async_show_form(
@@ -306,8 +308,10 @@ class RainMachineProOptionsFlow(OptionsFlow):
             current_programs = self._config_entry.options.get(CONF_PROGRAMS, {})
             programs = {}
             for pid, prog_data in current_programs.items():
+                rm_name = prog_data.get("rm_name", prog_data.get("name", f"Program {pid}"))
                 enabled = user_input.get(f"program_{pid}_enabled", prog_data.get("enabled", True))
-                programs[pid] = {"name": prog_data.get("name", f"Program {pid}"), "enabled": enabled}
+                name = user_input.get(f"program_{pid}_name", prog_data.get("name", rm_name))
+                programs[pid] = {"name": name, "rm_name": rm_name, "enabled": enabled}
             options = {
                 **self._general_options,
                 CONF_ZONES: self._zone_options,
@@ -327,8 +331,10 @@ class RainMachineProOptionsFlow(OptionsFlow):
                 rm_programs = await client.fetch_programs()
                 for prog in rm_programs:
                     pid = str(prog["uid"])
+                    rm_name = prog.get("name", f"Program {pid}")
                     current_programs[pid] = {
-                        "name": prog.get("name", f"Program {pid}"),
+                        "name": rm_name,
+                        "rm_name": rm_name,
                         "enabled": True,
                     }
             except Exception:
@@ -337,6 +343,10 @@ class RainMachineProOptionsFlow(OptionsFlow):
         schema_dict = {}
         for pid in sorted(current_programs.keys(), key=int):
             prog_data = current_programs[pid]
+            rm_name = prog_data.get("rm_name", prog_data.get("name", f"Program {pid}"))
+            schema_dict[
+                vol.Optional(f"program_{pid}_name", default=prog_data.get("name", rm_name))
+            ] = str
             schema_dict[
                 vol.Optional(f"program_{pid}_enabled", default=prog_data.get("enabled", True))
             ] = bool

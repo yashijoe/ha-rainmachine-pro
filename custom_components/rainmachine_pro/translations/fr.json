@@ -19,7 +19,7 @@
       },
       "programs": {
         "title": "Configuration des programmes",
-        "description": "Sélectionnez les programmes à surveiller et contrôler."
+        "description": "Sélectionnez les programmes à surveiller et contrôler. Activez/désactivez chaque programme et modifiez éventuellement le nom affiché."
       }
     },
     "error": {
@@ -49,7 +49,7 @@
       },
       "programs_options": {
         "title": "Configuration des programmes",
-        "description": "Sélectionnez les programmes à surveiller et contrôler."
+        "description": "Sélectionnez les programmes à surveiller et contrôler. Activez/désactivez chaque programme et modifiez éventuellement le nom affiché."
       }
     }
   }

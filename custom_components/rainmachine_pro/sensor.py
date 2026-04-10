@@ -75,26 +75,32 @@ async def async_setup_entry(
 
     # Run completion time — use fast coordinator for real-time updates
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
+    enabled_zones_cfg = entry.options.get(CONF_ZONES, {})
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
 
     for zone in fast_coordinator.data.get("zones", []):
+        uid = zone["uid"]
+        zone_cfg = enabled_zones_cfg.get(str(uid), {})
+        if not zone_cfg.get("enabled", False):
+            continue
+        name = zone_cfg.get("name") or zone.get("name", f"Zone {uid}")
         entities.append(
             RainMachineZoneRunCompletionTime(
-                fast_coordinator, coordinator, entry,
-                zone["uid"], zone.get("name", f"Zone {zone['uid']}")
+                fast_coordinator, coordinator, entry, uid, name
             )
         )
 
     for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
         prog_cfg = enabled_programs.get(str(pid), {})
-        if prog_cfg.get("enabled", True):
-            entities.append(
-                RainMachineProgramRunCompletionTime(
-                    fast_coordinator, coordinator, entry,
-                    pid, program.get("name", f"Program {pid}")
-                )
+        if not prog_cfg.get("enabled", True):
+            continue
+        name = prog_cfg.get("name") or program.get("name", f"Program {pid}")
+        entities.append(
+            RainMachineProgramRunCompletionTime(
+                fast_coordinator, coordinator, entry, pid, name
             )
+        )
 
     async_add_entities(entities)
 
@@ -509,6 +515,7 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator, slow_coordinator, entry, uid: int, zone_name: str) -> None:
         super().__init__(coordinator, entry)
@@ -570,6 +577,7 @@ class RainMachineProgramRunCompletionTime(RainMachineBaseEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator, slow_coordinator, entry, pid: int, program_name: str) -> None:
         super().__init__(coordinator, entry)

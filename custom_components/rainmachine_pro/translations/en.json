@@ -19,7 +19,7 @@
       },
       "programs": {
         "title": "Program Configuration",
-        "description": "Select which programs to monitor and control."
+        "description": "Select which programs to monitor and control. Enable/disable each program and optionally change the display name."
       }
     },
     "error": {
@@ -49,7 +49,7 @@
       },
       "programs_options": {
         "title": "Program Configuration",
-        "description": "Select which programs to monitor and control."
+        "description": "Select which programs to monitor and control. Enable/disable each program and optionally change the display name."
       }
     }
   }
