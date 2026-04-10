@@ -1,6 +1,7 @@
 """Config flow for RainMachine Pro integration."""
 
 import logging
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -30,6 +31,11 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _parser_schema_key(description: str) -> str:
+    """Convert a parser description to a readable schema key prefix."""
+    return re.sub(r"[^a-z0-9]+", "_", description.lower()).strip("_") or "parser"
+
+
 class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for RainMachine Pro."""
 
@@ -43,6 +49,7 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
         self._available_parsers: list[dict] = []
         self._zone_config: dict = {}
         self._program_config: dict = {}
+        self._parser_key_map: dict[str, str] = {}  # uid_str -> schema key prefix
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -166,11 +173,11 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                 if not uid:
                     continue
                 desc = parser.get("description", f"Parser {uid}")
-                has_run = (user_input or {}).get(
-                    f"parser_{uid}_enabled",
-                    parser.get("lastRun") not in (None, "unknown", ""),
-                )
-                parsers[uid] = {"description": desc, "enabled": bool(has_run)}
+                key = self._parser_key_map.get(uid, _parser_schema_key(desc))
+                has_run = parser.get("lastRun") not in (None, "unknown", "")
+                enabled = (user_input or {}).get(f"{key}_enabled", has_run)
+                name = (user_input or {}).get(f"{key}_name", desc)
+                parsers[uid] = {"description": desc, "name": name, "enabled": bool(enabled)}
 
             host = self._user_input[CONF_HOST]
             await self.async_set_unique_id(f"rainmachine_pro_{host}")
@@ -197,15 +204,23 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                 },
             )
 
+        # Build schema with description-based keys so HA renders readable labels
         schema_dict = {}
+        used_keys: set[str] = set()
+        self._parser_key_map = {}
         for parser in self._available_parsers:
             uid = str(parser.get("uid", ""))
             if not uid:
                 continue
+            desc = parser.get("description", f"Parser {uid}")
+            key = _parser_schema_key(desc)
+            if key in used_keys:
+                key = f"{key}_{uid}"
+            used_keys.add(key)
+            self._parser_key_map[uid] = key
             has_run = parser.get("lastRun") not in (None, "unknown", "")
-            schema_dict[
-                vol.Optional(f"parser_{uid}_enabled", default=has_run)
-            ] = bool
+            schema_dict[vol.Optional(f"{key}_name", default=desc)] = str
+            schema_dict[vol.Optional(f"{key}_enabled", default=has_run)] = bool
 
         return self.async_show_form(
             step_id="parsers",
@@ -230,6 +245,7 @@ class RainMachineProOptionsFlow(OptionsFlow):
         self._zone_options: dict[str, Any] = {}
         self._program_options: dict[str, Any] = {}
         self._fresh_parsers_map: dict[str, dict] = {}
+        self._parser_key_map: dict[str, str] = {}  # uid_str -> schema key prefix
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -383,7 +399,6 @@ class RainMachineProOptionsFlow(OptionsFlow):
             stored_parsers = {}
 
         if user_input is not None:
-            # Build merged parser dict from fresh API data + user input
             all_uid_strs = set(
                 list(self._fresh_parsers_map.keys()) + list(stored_parsers.keys())
             )
@@ -394,9 +409,15 @@ class RainMachineProOptionsFlow(OptionsFlow):
                 desc = fresh.get("description") or (
                     stored.get("description") if isinstance(stored, dict) else f"Parser {uid_str}"
                 )
-                default = stored.get("enabled", True) if isinstance(stored, dict) else True
-                enabled = user_input.get(f"parser_{uid_str}_enabled", default)
-                parsers[uid_str] = {"description": desc, "enabled": bool(enabled)}
+                key = self._parser_key_map.get(uid_str, _parser_schema_key(desc))
+                default_enabled = stored.get("enabled", True) if isinstance(stored, dict) else True
+                default_name = (
+                    (stored.get("name") or stored.get("description", desc))
+                    if isinstance(stored, dict) else desc
+                )
+                enabled = user_input.get(f"{key}_enabled", default_enabled)
+                name = user_input.get(f"{key}_name", default_name)
+                parsers[uid_str] = {"description": desc, "name": name, "enabled": bool(enabled)}
 
             options = {
                 **self._general_options,
@@ -428,20 +449,34 @@ class RainMachineProOptionsFlow(OptionsFlow):
         )
 
         if not all_uid_strs:
-            # No parsers at all — skip straight to done
             return await self.async_step_parsers_options(user_input={})
 
+        # Build schema with description-based keys
         schema_dict = {}
+        used_keys: set[str] = set()
+        self._parser_key_map = {}
         for uid_str in all_uid_strs:
             fresh = self._fresh_parsers_map.get(uid_str, {})
             stored = stored_parsers.get(uid_str, {})
-            if isinstance(stored, dict) and "enabled" in stored:
-                default_enabled = stored["enabled"]
-            else:
-                default_enabled = fresh.get("lastRun") not in (None, "unknown", "")
-            schema_dict[
-                vol.Optional(f"parser_{uid_str}_enabled", default=default_enabled)
-            ] = bool
+            desc = fresh.get("description") or (
+                stored.get("description") if isinstance(stored, dict) else f"Parser {uid_str}"
+            )
+            key = _parser_schema_key(desc)
+            if key in used_keys:
+                key = f"{key}_{uid_str}"
+            used_keys.add(key)
+            self._parser_key_map[uid_str] = key
+
+            default_enabled = (
+                stored.get("enabled", True) if isinstance(stored, dict)
+                else fresh.get("lastRun") not in (None, "unknown", "")
+            )
+            default_name = (
+                (stored.get("name") or stored.get("description", desc))
+                if isinstance(stored, dict) else desc
+            )
+            schema_dict[vol.Optional(f"{key}_name", default=default_name)] = str
+            schema_dict[vol.Optional(f"{key}_enabled", default=default_enabled)] = bool
 
         return self.async_show_form(
             step_id="parsers_options",

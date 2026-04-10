@@ -70,10 +70,12 @@ async def async_setup_entry(
     for uid_str, parser_cfg in parsers_config.items():
         if not isinstance(parser_cfg, dict) or not parser_cfg.get("enabled", True):
             continue
+        display_name = (
+            parser_cfg.get("name")
+            or parser_cfg.get("description", f"Parser {uid_str}")
+        )
         entities.append(
-            RainMachineParserSensor(
-                coordinator, entry, int(uid_str), parser_cfg.get("description", f"Parser {uid_str}")
-            )
+            RainMachineParserSensor(coordinator, entry, int(uid_str), display_name)
         )
 
     # Forecast sensors (7 days: yesterday + today + 5 days)
