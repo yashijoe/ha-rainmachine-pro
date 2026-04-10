@@ -55,8 +55,9 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
    - **Zone/program update interval**: fast polling frequency in seconds (default: `10`, range: 5–60) — zone and program run state
    - **Timeout**: connection timeout in seconds (default: `20`, range: 5–120)
 4. Click **Submit**
-5. **Zone configuration** — enable/disable each zone and customize display names
-6. **Program configuration** — enable/disable each program (only enabled programs generate switches and sensors)
+5. **Zone configuration** — enable/disable each zone and customize display names; only enabled zones create entities
+6. **Program configuration** — enable/disable each program and customize display names; only enabled programs create entities
+7. **Parser configuration** — select which weather parsers generate sensor entities; parsers that have already run are pre-enabled
 
 ### Options (post-setup)
 
@@ -64,9 +65,9 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 
 - Update interval (slow, minutes) and zone/program update interval (fast, seconds)
 - Timeout
-- Active weather parsers (select which ones generate sensors)
 - Zone names and enabled/disabled state
-- Program enabled/disabled state
+- Program names and enabled/disabled state
+- Weather parsers — select which ones generate sensor entities (fetched fresh from the device)
 
 ## Entities
 
