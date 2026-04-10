@@ -20,6 +20,10 @@
       "programs": {
         "title": "Configurazione programmi",
         "description": "Seleziona i programmi da monitorare e controllare. Attiva/disattiva ogni programma e modifica il nome visualizzato."
+      },
+      "parsers": {
+        "title": "Configurazione parser meteo",
+        "description": "Seleziona i parser meteo da esporre come entità in Home Assistant. I parser che hanno già eseguito sono abilitati per impostazione predefinita."
       }
     },
     "error": {
@@ -50,6 +54,10 @@
       "programs_options": {
         "title": "Configurazione programmi",
         "description": "Seleziona i programmi da monitorare e controllare. Attiva/disattiva ogni programma e modifica il nome visualizzato."
+      },
+      "parsers_options": {
+        "title": "Configurazione parser meteo",
+        "description": "Seleziona i parser meteo da esporre come entità in Home Assistant."
       }
     }
   }

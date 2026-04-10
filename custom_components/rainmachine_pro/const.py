@@ -17,30 +17,6 @@ DEFAULT_SCAN_INTERVAL = 5       # minutes
 DEFAULT_SCAN_INTERVAL_FAST = 10  # seconds
 DEFAULT_TIMEOUT = 20             # seconds
 
-# Parser key -> (search string in RM description, entity suffix, friendly name)
-AVAILABLE_PARSERS = {
-    "metno": {
-        "search": "met.no",
-        "entity_suffix": "metno_last_run",
-        "friendly_name": "MET.NO",
-    },
-    "openweathermap": {
-        "search": "openweathermap.org",
-        "entity_suffix": "openweathermap_last_run",
-        "friendly_name": "OpenWeather",
-    },
-    "wh2550a": {
-        "search": "WH2550A",
-        "entity_suffix": "wh2550a_last_run",
-        "friendly_name": "WH2550A personal station",
-    },
-    "wunderground": {
-        "search": "Weather Underground",
-        "entity_suffix": "wunderground_last_run",
-        "friendly_name": "WUnderground",
-    },
-}
-
 FLAG_MAP = {
     "en": {
         0: "Normal watering",
