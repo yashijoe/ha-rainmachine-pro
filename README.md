@@ -55,6 +55,8 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
    - **Zone/program update interval**: fast polling frequency in seconds (default: `10`, range: 5–60) — zone and program run state
    - **Timeout**: connection timeout in seconds (default: `20`, range: 5–120)
 4. Click **Submit**
+5. **Zone configuration** — enable/disable each zone and customize display names
+6. **Program configuration** — enable/disable each program (only enabled programs generate switches and sensors)
 
 ### Options (post-setup)
 
@@ -63,7 +65,8 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - Update interval (slow, minutes) and zone/program update interval (fast, seconds)
 - Timeout
 - Active weather parsers (select which ones generate sensors)
-- Zone names (customize the friendly name for each irrigation zone)
+- Zone names and enabled/disabled state
+- Program enabled/disabled state
 
 ## Entities
 
@@ -78,8 +81,8 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 | `sensor.rainmachine_zone_<n>` | Per-zone watering details | min | `measurement` |
 | `sensor.rainmachine_parser_*` | Last run time for each weather parser | — | `timestamp` |
 | `sensor.rainmachine_forecast_<n>` | Daily forecast (yesterday through +5 days) | — | — |
-| `sensor.<zone>_run_completion_time` | Estimated end time for currently running zone | — | `timestamp` |
-| `sensor.<program>_run_completion_time` | Estimated end time for currently running program | — | `timestamp` |
+| `sensor.<zone>_run_completion_time` | Estimated end time for currently running zone (attributes: `last_run_start`, `last_run_end`, `next_run`) | — | `timestamp` |
+| `sensor.<program>_run_completion_time` | Estimated end time for currently running program (attributes: `last_run`, `next_run`) | — | `timestamp` |
 
 ### Binary Sensors
 
@@ -97,9 +100,9 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 
 | Entity | Description |
 |--------|-------------|
-| `switch.<zone_name>` | Start/stop a zone manually (10 min default) |
+| `switch.<zone_name>` | Start/stop a zone manually (10 min default) — attributes: `last_run_start`, `last_run_end`, `next_run` |
 | `switch.<zone_name>_enabled` | Enable/disable a zone |
-| `switch.<program_name>` | Start/stop a program |
+| `switch.<program_name>` | Start/stop a program — attributes: `last_run`, `next_run` |
 | `switch.<program_name>_enabled` | Enable/disable a program |
 | `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
 | `switch.rainmachine_extra_water_on_hot_days` | Enable/disable extra watering on hot days |
