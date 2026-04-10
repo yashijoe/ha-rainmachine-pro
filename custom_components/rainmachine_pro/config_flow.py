@@ -91,7 +91,7 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_HOST, default="192.168.50.2"): str,
+                    vol.Required(CONF_HOST): str,
                     vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
                     vol.Required(CONF_PASSWORD): str,
                     vol.Optional(
