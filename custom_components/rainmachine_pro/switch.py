@@ -18,6 +18,29 @@ _LOGGER = logging.getLogger(__name__)
 _DEFAULT_ZONE_DURATION = 600  # 10 minutes
 
 
+def _next_run_with_time(prog: dict) -> str | None:
+    """Combine program nextRun date with startTime (minutes from midnight).
+
+    RainMachine returns nextRun as "YYYY-MM-DD" and startTime as an integer
+    (minutes from midnight, e.g. 360 = 06:00). Combines them into
+    "YYYY-MM-DD HH:MM". Falls back to date-only if startTime is missing.
+    """
+    next_run = prog.get("nextRun")
+    if not next_run:
+        return None
+    start_time = prog.get("startTime")
+    if start_time is None:
+        return next_run
+    try:
+        minutes = int(start_time)
+        h, m = divmod(minutes, 60)
+        return f"{next_run} {h:02d}:{m:02d}"
+    except (TypeError, ValueError):
+        if isinstance(start_time, str) and ":" in start_time:
+            return f"{next_run} {start_time}"
+        return next_run
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -87,11 +110,28 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
         """Return last_run and next_run attributes."""
         attrs = {}
 
-        # next_run: first scheduled (not yet running) queue item for this zone
+        # next_run: check queue first (imminent run today), then fall back to
+        # earliest program that includes this zone (future scheduled run)
+        next_run_found = False
         for item in self.coordinator.data.get("queue", []):
             if item.get("zid") == self._uid and not item.get("running"):
                 attrs["next_run"] = item.get("startTime") or item.get("eta")
+                next_run_found = True
                 break
+
+        if not next_run_found:
+            candidates = []
+            for prog in self._slow_coordinator.data.get("programs", []):
+                if not prog.get("active"):
+                    continue
+                for pz in prog.get("zones", []):
+                    if pz.get("uid") == self._uid:
+                        nr = _next_run_with_time(prog)
+                        if nr:
+                            candidates.append(nr)
+                        break
+            if candidates:
+                attrs["next_run"] = min(candidates)  # lexicographic min is correct for "YYYY-MM-DD HH:MM"
 
         # last_run: from slow coordinator watering details
         try:
@@ -203,7 +243,7 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
         attrs = {}
         for prog in self._slow_coordinator.data.get("programs", []):
             if prog["uid"] == self._pid:
-                next_run = prog.get("nextRun")
+                next_run = _next_run_with_time(prog)
                 last_run = prog.get("lastRun")
                 if next_run:
                     attrs["next_run"] = next_run
