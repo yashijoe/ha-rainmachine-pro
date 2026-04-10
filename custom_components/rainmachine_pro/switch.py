@@ -8,7 +8,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, CONF_PROGRAMS
+from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES
 from .coordinator import RainMachineProCoordinator
 from .entity import RainMachineBaseEntity
 
@@ -28,12 +28,16 @@ async def async_setup_entry(
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     entities: list[SwitchEntity] = []
 
+    zones_config = entry.options.get(CONF_ZONES, {})
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
 
-    # Zone switches — run uses fast coordinator, enabled uses slow
+    # Zone switches — only enabled zones
     for zone in fast_coordinator.data.get("zones", []):
         uid = zone["uid"]
-        name = zone.get("name", f"Zone {uid}")
+        zone_cfg = zones_config.get(str(uid), {})
+        if not zone_cfg.get("enabled", False):
+            continue
+        name = zone_cfg.get("name") or zone.get("name", f"Zone {uid}")
         entities.append(RainMachineZoneRunSwitch(fast_coordinator, coordinator, entry, uid, name))
         entities.append(RainMachineZoneEnabledSwitch(coordinator, entry, uid, name))
 
