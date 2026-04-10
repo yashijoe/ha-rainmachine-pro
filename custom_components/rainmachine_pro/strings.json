@@ -9,12 +9,21 @@
           "port": "Port",
           "password": "Password",
           "scan_interval": "Update interval (minutes)",
+          "scan_interval_fast": "Zone/program update interval (seconds)",
           "timeout": "Connection timeout (seconds)"
         }
       },
       "zones": {
         "title": "Zone Configuration",
         "description": "Select which zones to monitor and customize their names. Enable/disable each zone and optionally change the display name."
+      },
+      "programs": {
+        "title": "Program Configuration",
+        "description": "Select which programs to monitor and control. Enable/disable each program and optionally change the display name."
+      },
+      "parsers": {
+        "title": "Weather Parser Configuration",
+        "description": "Select which weather parsers to expose as entities in Home Assistant. Parsers that have already run are enabled by default."
       }
     },
     "error": {
@@ -30,16 +39,24 @@
     "step": {
       "init": {
         "title": "RainMachine Pro Settings",
-        "description": "Configure update interval, timeout, and active weather parsers.",
+        "description": "Configure update interval and timeout.",
         "data": {
           "scan_interval": "Update interval (minutes)",
-          "timeout": "Connection timeout (seconds)",
-          "parsers": "Active weather parsers"
+          "scan_interval_fast": "Zone/program update interval (seconds)",
+          "timeout": "Connection timeout (seconds)"
         }
       },
       "zones": {
         "title": "Zone Configuration",
         "description": "Select which zones to monitor and customize their names."
+      },
+      "programs_options": {
+        "title": "Program Configuration",
+        "description": "Select which programs to monitor and control. Enable/disable each program and optionally change the display name."
+      },
+      "parsers_options": {
+        "title": "Weather Parser Configuration",
+        "description": "Select which weather parsers to expose as entities in Home Assistant."
       }
     }
   }
