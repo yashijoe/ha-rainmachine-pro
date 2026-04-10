@@ -57,7 +57,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 4. Click **Submit**
 5. **Zone configuration** — enable/disable each zone and customize display names; only enabled zones create entities
 6. **Program configuration** — enable/disable each program and customize display names; only enabled programs create entities
-7. **Parser configuration** — select which weather parsers generate sensor entities; parsers that have already run are pre-enabled
+7. **Parser configuration** — select which weather parsers generate sensor entities; parsers that have already run are pre-enabled; you can also rename each entity at this step
 
 ### Options (post-setup)
 
@@ -67,7 +67,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - Timeout
 - Zone names and enabled/disabled state
 - Program names and enabled/disabled state
-- Weather parsers — select which ones generate sensor entities (fetched fresh from the device)
+- Weather parsers — enable/disable each parser and rename its entity (list fetched fresh from the device each time)
 
 ## Entities
 
