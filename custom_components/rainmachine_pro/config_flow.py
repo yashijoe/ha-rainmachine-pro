@@ -36,6 +36,13 @@ def _parser_schema_key(description: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", description.lower()).strip("_") or "parser"
 
 
+def _parser_display_name(parser: dict) -> str:
+    """Return parser name with trailing 'Parser' word stripped."""
+    name = parser.get("name", "")
+    stripped = re.sub(r"[\s_-]*[Pp]arser\s*$", "", name).strip()
+    return stripped or name
+
+
 class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for RainMachine Pro."""
 
@@ -173,10 +180,11 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                 if not uid:
                     continue
                 desc = parser.get("description", f"Parser {uid}")
-                key = self._parser_key_map.get(uid, _parser_schema_key(desc))
+                display = _parser_display_name(parser)
+                key = self._parser_key_map.get(uid, _parser_schema_key(display))
                 has_run = parser.get("lastRun") not in (None, "unknown", "")
                 enabled = (user_input or {}).get(f"{key}_enabled", has_run)
-                name = (user_input or {}).get(f"{key}_name", desc)
+                name = (user_input or {}).get(f"{key}_name", display)
                 parsers[uid] = {"description": desc, "name": name, "enabled": bool(enabled)}
 
             host = self._user_input[CONF_HOST]
@@ -204,7 +212,7 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                 },
             )
 
-        # Build schema with description-based keys so HA renders readable labels
+        # Build schema with name-based keys so HA renders readable labels
         schema_dict = {}
         used_keys: set[str] = set()
         self._parser_key_map = {}
@@ -212,14 +220,14 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
             uid = str(parser.get("uid", ""))
             if not uid:
                 continue
-            desc = parser.get("description", f"Parser {uid}")
-            key = _parser_schema_key(desc)
+            display = _parser_display_name(parser)
+            key = _parser_schema_key(display)
             if key in used_keys:
                 key = f"{key}_{uid}"
             used_keys.add(key)
             self._parser_key_map[uid] = key
             has_run = parser.get("lastRun") not in (None, "unknown", "")
-            schema_dict[vol.Optional(f"{key}_name", default=desc)] = str
+            schema_dict[vol.Optional(f"{key}_name", default=display)] = str
             schema_dict[vol.Optional(f"{key}_enabled", default=has_run)] = bool
 
         return self.async_show_form(
@@ -409,11 +417,15 @@ class RainMachineProOptionsFlow(OptionsFlow):
                 desc = fresh.get("description") or (
                     stored.get("description") if isinstance(stored, dict) else f"Parser {uid_str}"
                 )
-                key = self._parser_key_map.get(uid_str, _parser_schema_key(desc))
+                display = (
+                    _parser_display_name(fresh) if fresh.get("name")
+                    else (stored.get("name") if isinstance(stored, dict) else None) or desc
+                )
+                key = self._parser_key_map.get(uid_str, _parser_schema_key(display))
                 default_enabled = stored.get("enabled", True) if isinstance(stored, dict) else True
                 default_name = (
-                    (stored.get("name") or stored.get("description", desc))
-                    if isinstance(stored, dict) else desc
+                    (stored.get("name") or display)
+                    if isinstance(stored, dict) else display
                 )
                 enabled = user_input.get(f"{key}_enabled", default_enabled)
                 name = user_input.get(f"{key}_name", default_name)
@@ -451,7 +463,7 @@ class RainMachineProOptionsFlow(OptionsFlow):
         if not all_uid_strs:
             return await self.async_step_parsers_options(user_input={})
 
-        # Build schema with description-based keys
+        # Build schema with name-based keys
         schema_dict = {}
         used_keys: set[str] = set()
         self._parser_key_map = {}
@@ -461,7 +473,11 @@ class RainMachineProOptionsFlow(OptionsFlow):
             desc = fresh.get("description") or (
                 stored.get("description") if isinstance(stored, dict) else f"Parser {uid_str}"
             )
-            key = _parser_schema_key(desc)
+            display = (
+                _parser_display_name(fresh) if fresh.get("name")
+                else (stored.get("name") if isinstance(stored, dict) else None) or desc
+            )
+            key = _parser_schema_key(display)
             if key in used_keys:
                 key = f"{key}_{uid_str}"
             used_keys.add(key)
@@ -472,8 +488,8 @@ class RainMachineProOptionsFlow(OptionsFlow):
                 else fresh.get("lastRun") not in (None, "unknown", "")
             )
             default_name = (
-                (stored.get("name") or stored.get("description", desc))
-                if isinstance(stored, dict) else desc
+                (stored.get("name") or display)
+                if isinstance(stored, dict) else display
             )
             schema_dict[vol.Optional(f"{key}_name", default=default_name)] = str
             schema_dict[vol.Optional(f"{key}_enabled", default=default_enabled)] = bool
