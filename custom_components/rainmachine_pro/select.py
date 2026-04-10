@@ -4,6 +4,7 @@ import logging
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -33,7 +34,7 @@ class RainMachineFreezeProtectionTemp(RainMachineBaseEntity, SelectEntity):
     _attr_name = "Freeze protection temperature"
     _attr_icon = "mdi:thermometer-snowflake"
     _attr_options = _FREEZE_TEMPS
-    _attr_entity_category = "config"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: RainMachineProCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)

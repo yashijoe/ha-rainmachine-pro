@@ -36,3 +36,29 @@ class RainMachineProCoordinator(DataUpdateCoordinator):
             return await self.client.fetch_all_data()
         except RainMachineApiError as err:
             raise UpdateFailed(f"Error fetching RainMachine data: {err}") from err
+
+
+class RainMachineProFastCoordinator(DataUpdateCoordinator):
+    """Fast coordinator — polls only queue, zones and programs every N seconds."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: RainMachineClient,
+        scan_interval_fast: int,
+    ) -> None:
+        """Initialize fast coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_fast",
+            update_interval=timedelta(seconds=scan_interval_fast),
+        )
+        self.client = client
+
+    async def _async_update_data(self) -> dict:
+        """Fetch fast data from RainMachine."""
+        try:
+            return await self.client.fetch_fast_data()
+        except RainMachineApiError as err:
+            raise UpdateFailed(f"Fast update failed: {err}") from err

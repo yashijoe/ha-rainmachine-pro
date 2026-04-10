@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit RainMachine verbinden",
+        "description": "Geben Sie die Verbindungsdaten Ihres RainMachine ein.",
+        "data": {
+          "host": "Host (IP-Adresse)",
+          "port": "Port",
+          "password": "Passwort",
+          "scan_interval": "Aktualisierungsintervall (Minuten)",
+          "scan_interval_fast": "Aktualisierungsintervall Zonen/Programme (Sekunden)",
+          "timeout": "Verbindungs-Timeout (Sekunden)"
+        }
+      },
+      "zones": {
+        "title": "Zonen-Konfiguration",
+        "description": "Wählen Sie die zu überwachenden Zonen und passen Sie die Namen an. Aktivieren/deaktivieren Sie jede Zone und ändern Sie optional den Anzeigenamen."
+      },
+      "programs": {
+        "title": "Programm-Konfiguration",
+        "description": "Wählen Sie die zu überwachenden und steuernden Programme aus."
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zu RainMachine fehlgeschlagen. IP-Adresse und Port prüfen.",
+      "invalid_auth": "Falsches Passwort.",
+      "unknown": "Unerwarteter Fehler."
+    },
+    "abort": {
+      "already_configured": "Dieser RainMachine ist bereits konfiguriert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "RainMachine Pro Einstellungen",
+        "description": "Aktualisierungsintervall, Timeout und aktive Wetter-Parser konfigurieren.",
+        "data": {
+          "scan_interval": "Aktualisierungsintervall (Minuten)",
+          "scan_interval_fast": "Aktualisierungsintervall Zonen/Programme (Sekunden)",
+          "timeout": "Verbindungs-Timeout (Sekunden)",
+          "parsers": "Aktive Wetter-Parser"
+        }
+      },
+      "zones": {
+        "title": "Zonen-Konfiguration",
+        "description": "Wählen Sie die zu überwachenden Zonen und passen Sie die Namen an."
+      },
+      "programs_options": {
+        "title": "Programm-Konfiguration",
+        "description": "Wählen Sie die zu überwachenden und steuernden Programme aus."
+      }
+    }
+  }
+}

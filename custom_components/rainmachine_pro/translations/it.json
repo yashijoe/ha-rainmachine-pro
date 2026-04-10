@@ -9,12 +9,17 @@
           "port": "Porta",
           "password": "Password",
           "scan_interval": "Intervallo di aggiornamento (minuti)",
+          "scan_interval_fast": "Intervallo aggiornamento zone/programmi (secondi)",
           "timeout": "Timeout connessione (secondi)"
         }
       },
       "zones": {
         "title": "Configurazione zone",
         "description": "Seleziona le zone da monitorare e personalizza i nomi. Attiva/disattiva ogni zona e modifica il nome visualizzato."
+      },
+      "programs": {
+        "title": "Configurazione programmi",
+        "description": "Seleziona i programmi da monitorare e controllare."
       }
     },
     "error": {
@@ -33,6 +38,7 @@
         "description": "Configura intervallo di aggiornamento, timeout e parser meteo attivi.",
         "data": {
           "scan_interval": "Intervallo di aggiornamento (minuti)",
+          "scan_interval_fast": "Intervallo aggiornamento zone/programmi (secondi)",
           "timeout": "Timeout connessione (secondi)",
           "parsers": "Parser meteo attivi"
         }
@@ -40,6 +46,10 @@
       "zones": {
         "title": "Configurazione zone",
         "description": "Seleziona le zone da monitorare e personalizza i nomi."
+      },
+      "programs_options": {
+        "title": "Configurazione programmi",
+        "description": "Seleziona i programmi da monitorare e controllare."
       }
     }
   }

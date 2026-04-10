@@ -4,10 +4,11 @@ import logging
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_PROGRAMS
 from .coordinator import RainMachineProCoordinator
 from .entity import RainMachineBaseEntity
 
@@ -24,21 +25,26 @@ async def async_setup_entry(
 ) -> None:
     """Set up switch entities from a config entry."""
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
+    fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     entities: list[SwitchEntity] = []
 
-    # Zone switches — one pair per zone from the API
-    for zone in coordinator.data.get("zones", []):
+    enabled_programs = entry.options.get(CONF_PROGRAMS, {})
+
+    # Zone switches — run uses fast coordinator, enabled uses slow
+    for zone in fast_coordinator.data.get("zones", []):
         uid = zone["uid"]
         name = zone.get("name", f"Zone {uid}")
-        entities.append(RainMachineZoneRunSwitch(coordinator, entry, uid, name))
+        entities.append(RainMachineZoneRunSwitch(fast_coordinator, coordinator, entry, uid, name))
         entities.append(RainMachineZoneEnabledSwitch(coordinator, entry, uid, name))
 
-    # Program switches — one pair per program
-    for program in coordinator.data.get("programs", []):
+    # Program switches — filtered by enabled programs, run uses fast coordinator, enabled uses slow
+    for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
         name = program.get("name", f"Program {pid}")
-        entities.append(RainMachineProgramRunSwitch(coordinator, entry, pid, name))
-        entities.append(RainMachineProgramEnabledSwitch(coordinator, entry, pid, name))
+        prog_cfg = enabled_programs.get(str(pid), {})
+        if prog_cfg.get("enabled", True):
+            entities.append(RainMachineProgramRunSwitch(fast_coordinator, coordinator, entry, pid, name))
+            entities.append(RainMachineProgramEnabledSwitch(coordinator, entry, pid, name))
 
     # Global switches
     entities.append(RainMachineFreezeProtectionSwitch(coordinator, entry))
@@ -57,19 +63,57 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:water"
 
-    def __init__(self, coordinator, entry, uid: int, zone_name: str) -> None:
+    def __init__(self, coordinator, slow_coordinator, entry, uid: int, zone_name: str) -> None:
         super().__init__(coordinator, entry)
         self._uid = uid
+        self._slow_coordinator = slow_coordinator
         self._attr_name = zone_name
         self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_run"
 
     @property
     def is_on(self) -> bool:
-        """Return True if zone is currently running."""
-        for zone in self.coordinator.data.get("zones", []):
-            if zone["uid"] == self._uid:
-                return zone.get("state", 0) != 0
+        """Return True if zone is currently running (check queue)."""
+        for item in self.coordinator.data.get("queue", []):
+            if item.get("zid") == self._uid and item.get("running"):
+                return True
         return False
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return last_run and next_run attributes."""
+        attrs = {}
+
+        # next_run: first scheduled (not yet running) queue item for this zone
+        for item in self.coordinator.data.get("queue", []):
+            if item.get("zid") == self._uid and not item.get("running"):
+                attrs["next_run"] = item.get("startTime") or item.get("eta")
+                break
+
+        # last_run: from slow coordinator watering details
+        try:
+            details = self._slow_coordinator.data.get("details", {})
+            days = details.get("waterLog", {}).get("days", [])
+            if days:
+                for prog in days[0].get("programs", []):
+                    for zone in prog.get("zones", []):
+                        if zone.get("uid") == self._uid:
+                            cycle = zone.get("cycles", [{}])[0]
+                            start = cycle.get("startTime")
+                            real_dur = int(cycle.get("realDuration", 0))
+                            if start:
+                                attrs["last_run_start"] = start
+                            if start and real_dur:
+                                from datetime import datetime, timedelta
+                                try:
+                                    dt = datetime.fromisoformat(start)
+                                    attrs["last_run_end"] = (dt + timedelta(seconds=real_dur)).isoformat()
+                                except (ValueError, TypeError):
+                                    pass
+                            break
+        except Exception:
+            pass
+
+        return attrs
 
     async def async_turn_on(self, **kwargs) -> None:
         """Start zone irrigation."""
@@ -93,7 +137,7 @@ class RainMachineZoneEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
 
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:cog"
-    _attr_entity_category = "config"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator, entry, uid: int, zone_name: str) -> None:
         super().__init__(coordinator, entry)
@@ -134,19 +178,35 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:water-outline"
 
-    def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
+    def __init__(self, coordinator, slow_coordinator, entry, pid: int, program_name: str) -> None:
         super().__init__(coordinator, entry)
         self._pid = pid
+        self._slow_coordinator = slow_coordinator
         self._attr_name = program_name
         self._attr_unique_id = f"{entry.entry_id}_program_{pid}_run"
 
     @property
     def is_on(self) -> bool:
-        """Return True if program is currently running."""
-        for program in self.coordinator.data.get("programs", []):
-            if program["uid"] == self._pid:
-                return program.get("status", 0) != 0
+        """Return True if program is currently running (check queue)."""
+        for item in self.coordinator.data.get("queue", []):
+            if item.get("pid") == self._pid and item.get("running"):
+                return True
         return False
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return last_run and next_run from program data."""
+        attrs = {}
+        for prog in self._slow_coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                next_run = prog.get("nextRun")
+                last_run = prog.get("lastRun")
+                if next_run:
+                    attrs["next_run"] = next_run
+                if last_run:
+                    attrs["last_run"] = last_run
+                break
+        return attrs
 
     async def async_turn_on(self, **kwargs) -> None:
         try:
@@ -168,7 +228,7 @@ class RainMachineProgramEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
 
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:cog"
-    _attr_entity_category = "config"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
         super().__init__(coordinator, entry)
@@ -207,7 +267,7 @@ class RainMachineFreezeProtectionSwitch(RainMachineBaseEntity, SwitchEntity):
 
     _attr_name = "Freeze protection"
     _attr_icon = "mdi:snowflake"
-    _attr_entity_category = "config"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator, entry) -> None:
         super().__init__(coordinator, entry)
@@ -243,7 +303,7 @@ class RainMachineExtraWaterSwitch(RainMachineBaseEntity, SwitchEntity):
 
     _attr_name = "Extra water on hot days"
     _attr_icon = "mdi:thermometer-water"
-    _attr_entity_category = "config"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator, entry) -> None:
         super().__init__(coordinator, entry)

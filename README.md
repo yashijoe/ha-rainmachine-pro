@@ -21,7 +21,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Firmware update** — trigger firmware updates from the Home Assistant update panel
 - **Reboot button** — reboot the controller directly from Home Assistant
 - **Fully configurable from UI** — no YAML needed
-- **Multi-language** — English and Italian translations included
+- **Multi-language** — English, Italian, French, German, and Spanish translations included
 
 ## Requirements
 
@@ -51,17 +51,22 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
    - **Host**: IP address of your RainMachine (e.g., `192.168.50.2`)
    - **Port**: API port (default: `8080`)
    - **Password**: your RainMachine password
-   - **Update interval**: polling frequency in minutes (default: `5`, range: 1–60)
+   - **Update interval**: slow polling frequency in minutes (default: `5`, range: 1–60) — weather, forecast, restrictions, firmware
+   - **Zone/program update interval**: fast polling frequency in seconds (default: `10`, range: 5–60) — zone and program run state
    - **Timeout**: connection timeout in seconds (default: `20`, range: 5–120)
 4. Click **Submit**
+5. **Zone configuration** — enable/disable each zone and customize display names
+6. **Program configuration** — enable/disable each program (only enabled programs generate switches and sensors)
 
 ### Options (post-setup)
 
 Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Configure** to change:
 
-- Update interval and timeout
+- Update interval (slow, minutes) and zone/program update interval (fast, seconds)
+- Timeout
 - Active weather parsers (select which ones generate sensors)
-- Zone names (customize the friendly name for each irrigation zone)
+- Zone names and enabled/disabled state
+- Program enabled/disabled state
 
 ## Entities
 
@@ -76,8 +81,8 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 | `sensor.rainmachine_zone_<n>` | Per-zone watering details | min | `measurement` |
 | `sensor.rainmachine_parser_*` | Last run time for each weather parser | — | `timestamp` |
 | `sensor.rainmachine_forecast_<n>` | Daily forecast (yesterday through +5 days) | — | — |
-| `sensor.<zone>_run_completion_time` | Estimated end time for currently running zone | — | `timestamp` |
-| `sensor.<program>_run_completion_time` | Estimated end time for currently running program | — | `timestamp` |
+| `sensor.<zone>_run_completion_time` | Estimated end time for currently running zone (attributes: `last_run_start`, `last_run_end`, `next_run`) | — | `timestamp` |
+| `sensor.<program>_run_completion_time` | Estimated end time for currently running program (attributes: `last_run`, `next_run`) | — | `timestamp` |
 
 ### Binary Sensors
 
@@ -95,9 +100,9 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 
 | Entity | Description |
 |--------|-------------|
-| `switch.<zone_name>` | Start/stop a zone manually (10 min default) |
+| `switch.<zone_name>` | Start/stop a zone manually (10 min default) — attributes: `last_run_start`, `last_run_end`, `next_run` |
 | `switch.<zone_name>_enabled` | Enable/disable a zone |
-| `switch.<program_name>` | Start/stop a program |
+| `switch.<program_name>` | Start/stop a program — attributes: `last_run`, `next_run` |
 | `switch.<program_name>_enabled` | Enable/disable a program |
 | `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
 | `switch.rainmachine_extra_water_on_hot_days` | Enable/disable extra watering on hot days |
@@ -206,7 +211,10 @@ cards:
 
 ## How It Works
 
-The integration polls your RainMachine's local API at the configured interval. All communication happens on your LAN — no cloud services are involved.
+The integration polls your RainMachine's local API using two independent coordinators. All communication happens on your LAN — no cloud services are involved.
+
+- **Slow coordinator** (default every 5 min) — weather parsers, forecast, restrictions, rain delay, provision, firmware update
+- **Fast coordinator** (default every 10 s) — zone list, program list, watering queue (used by run switches and run completion time sensors)
 
 **API endpoints used:**
 

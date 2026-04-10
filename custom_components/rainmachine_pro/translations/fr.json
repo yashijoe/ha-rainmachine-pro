@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion à RainMachine",
+        "description": "Entrez les informations de connexion à votre RainMachine.",
+        "data": {
+          "host": "Hôte (adresse IP)",
+          "port": "Port",
+          "password": "Mot de passe",
+          "scan_interval": "Intervalle de mise à jour (minutes)",
+          "scan_interval_fast": "Intervalle de mise à jour zones/programmes (secondes)",
+          "timeout": "Délai de connexion (secondes)"
+        }
+      },
+      "zones": {
+        "title": "Configuration des zones",
+        "description": "Sélectionnez les zones à surveiller et personnalisez leurs noms. Activez/désactivez chaque zone et modifiez éventuellement le nom affiché."
+      },
+      "programs": {
+        "title": "Configuration des programmes",
+        "description": "Sélectionnez les programmes à surveiller et contrôler."
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de se connecter à RainMachine. Vérifiez l'adresse IP et le port.",
+      "invalid_auth": "Mot de passe incorrect.",
+      "unknown": "Erreur inattendue."
+    },
+    "abort": {
+      "already_configured": "Ce RainMachine est déjà configuré."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Paramètres RainMachine Pro",
+        "description": "Configurez l'intervalle de mise à jour, le délai et les sources météo actives.",
+        "data": {
+          "scan_interval": "Intervalle de mise à jour (minutes)",
+          "scan_interval_fast": "Intervalle de mise à jour zones/programmes (secondes)",
+          "timeout": "Délai de connexion (secondes)",
+          "parsers": "Sources météo actives"
+        }
+      },
+      "zones": {
+        "title": "Configuration des zones",
+        "description": "Sélectionnez les zones à surveiller et personnalisez leurs noms."
+      },
+      "programs_options": {
+        "title": "Configuration des programmes",
+        "description": "Sélectionnez les programmes à surveiller et contrôler."
+      }
+    }
+  }
+}

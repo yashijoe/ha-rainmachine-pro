@@ -9,6 +9,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -16,6 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DOMAIN,
     CONF_ZONES,
+    CONF_PROGRAMS,
     CONF_PARSERS,
     AVAILABLE_PARSERS,
     FLAG_MAP,
@@ -71,21 +73,28 @@ async def async_setup_entry(
     for i in range(7):
         entities.append(RainMachineForecastSensor(coordinator, entry, i))
 
-    # Run completion time — one per zone
-    for zone in coordinator.data.get("zones", []):
+    # Run completion time — use fast coordinator for real-time updates
+    fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
+    enabled_programs = entry.options.get(CONF_PROGRAMS, {})
+
+    for zone in fast_coordinator.data.get("zones", []):
         entities.append(
             RainMachineZoneRunCompletionTime(
-                coordinator, entry, zone["uid"], zone.get("name", f"Zone {zone['uid']}")
+                fast_coordinator, coordinator, entry,
+                zone["uid"], zone.get("name", f"Zone {zone['uid']}")
             )
         )
 
-    # Run completion time — one per program
-    for program in coordinator.data.get("programs", []):
-        entities.append(
-            RainMachineProgramRunCompletionTime(
-                coordinator, entry, program["uid"], program.get("name", f"Program {program['uid']}")
+    for program in fast_coordinator.data.get("programs", []):
+        pid = program["uid"]
+        prog_cfg = enabled_programs.get(str(pid), {})
+        if prog_cfg.get("enabled", True):
+            entities.append(
+                RainMachineProgramRunCompletionTime(
+                    fast_coordinator, coordinator, entry,
+                    pid, program.get("name", f"Program {pid}")
+                )
             )
-        )
 
     async_add_entities(entities)
 
@@ -499,11 +508,12 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:timer-outline"
-    _attr_entity_category = "diagnostic"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    def __init__(self, coordinator, entry, uid: int, zone_name: str) -> None:
+    def __init__(self, coordinator, slow_coordinator, entry, uid: int, zone_name: str) -> None:
         super().__init__(coordinator, entry)
         self._uid = uid
+        self._slow_coordinator = slow_coordinator
         self._attr_name = f"{zone_name} run completion time"
         self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_run_completion"
 
@@ -517,17 +527,54 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
                     return datetime.now().astimezone() + timedelta(seconds=remaining)
         return None
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return last_run and next_run attributes."""
+        attrs = {}
+        # next_run: scheduled (not yet running) queue item for this zone
+        for item in self.coordinator.data.get("queue", []):
+            if item.get("zid") == self._uid and not item.get("running"):
+                val = item.get("startTime") or item.get("eta")
+                if val:
+                    attrs["next_run"] = val
+                break
+        # last_run: from slow coordinator watering details
+        try:
+            details = self._slow_coordinator.data.get("details", {})
+            for day in details.get("waterLog", {}).get("days", []):
+                for prog in day.get("programs", []):
+                    for zone in prog.get("zones", []):
+                        if zone.get("uid") == self._uid:
+                            cycle = zone.get("cycles", [{}])[0]
+                            start = cycle.get("startTime")
+                            real_dur = int(cycle.get("realDuration", 0))
+                            if start:
+                                attrs["last_run_start"] = start
+                            if start and real_dur:
+                                try:
+                                    dt = datetime.fromisoformat(start)
+                                    attrs["last_run_end"] = (
+                                        dt + timedelta(seconds=real_dur)
+                                    ).isoformat()
+                                except (ValueError, TypeError):
+                                    pass
+                            break
+        except Exception:
+            pass
+        return attrs
+
 
 class RainMachineProgramRunCompletionTime(RainMachineBaseEntity, SensorEntity):
-    """Sensor: when the current program run will finish (current zone remaining)."""
+    """Sensor: when the current program run will finish."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:timer-outline"
-    _attr_entity_category = "diagnostic"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
+    def __init__(self, coordinator, slow_coordinator, entry, pid: int, program_name: str) -> None:
         super().__init__(coordinator, entry)
         self._pid = pid
+        self._slow_coordinator = slow_coordinator
         self._attr_name = f"{program_name} run completion time"
         self._attr_unique_id = f"{entry.entry_id}_program_{pid}_run_completion"
 
@@ -540,3 +587,18 @@ class RainMachineProgramRunCompletionTime(RainMachineBaseEntity, SensorEntity):
                 if remaining > 0:
                     return datetime.now().astimezone() + timedelta(seconds=remaining)
         return None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return last_run and next_run from program data."""
+        attrs = {}
+        for prog in self._slow_coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                next_run = prog.get("nextRun")
+                last_run = prog.get("lastRun")
+                if next_run:
+                    attrs["next_run"] = next_run
+                if last_run:
+                    attrs["last_run"] = last_run
+                break
+        return attrs
