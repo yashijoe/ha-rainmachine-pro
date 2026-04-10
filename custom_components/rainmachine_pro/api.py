@@ -204,6 +204,11 @@ class RainMachineClient:
             await self.authenticate(session)
             return await self.get_zones(session)
 
+    async def fetch_programs(self) -> list:
+        async with aiohttp.ClientSession() as session:
+            await self.authenticate(session)
+            return await self.get_programs(session)
+
     async def fetch_fast_data(self) -> dict:
         """Fetch only zones, programs and queue (for fast polling)."""
         async with aiohttp.ClientSession() as session:

@@ -16,6 +16,10 @@
       "zones": {
         "title": "Zonen-Konfiguration",
         "description": "Wählen Sie die zu überwachenden Zonen und passen Sie die Namen an. Aktivieren/deaktivieren Sie jede Zone und ändern Sie optional den Anzeigenamen."
+      },
+      "programs": {
+        "title": "Programm-Konfiguration",
+        "description": "Wählen Sie die zu überwachenden und steuernden Programme aus."
       }
     },
     "error": {
@@ -42,6 +46,10 @@
       "zones": {
         "title": "Zonen-Konfiguration",
         "description": "Wählen Sie die zu überwachenden Zonen und passen Sie die Namen an."
+      },
+      "programs_options": {
+        "title": "Programm-Konfiguration",
+        "description": "Wählen Sie die zu überwachenden und steuernden Programme aus."
       }
     }
   }

@@ -9,6 +9,7 @@ CONF_SCAN_INTERVAL = "scan_interval"
 CONF_SCAN_INTERVAL_FAST = "scan_interval_fast"
 CONF_TIMEOUT = "timeout"
 CONF_ZONES = "zones"
+CONF_PROGRAMS = "programs_enabled"
 CONF_PARSERS = "parsers"
 
 DEFAULT_PORT = 8080

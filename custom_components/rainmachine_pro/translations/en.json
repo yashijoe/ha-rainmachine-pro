@@ -16,6 +16,10 @@
       "zones": {
         "title": "Zone Configuration",
         "description": "Select which zones to monitor and customize their names. Enable/disable each zone and optionally change the display name."
+      },
+      "programs": {
+        "title": "Program Configuration",
+        "description": "Select which programs to monitor and control."
       }
     },
     "error": {
@@ -42,6 +46,10 @@
       "zones": {
         "title": "Zone Configuration",
         "description": "Select which zones to monitor and customize their names."
+      },
+      "programs_options": {
+        "title": "Program Configuration",
+        "description": "Select which programs to monitor and control."
       }
     }
   }

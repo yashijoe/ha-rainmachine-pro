@@ -16,6 +16,10 @@
       "zones": {
         "title": "Configuration des zones",
         "description": "Sélectionnez les zones à surveiller et personnalisez leurs noms. Activez/désactivez chaque zone et modifiez éventuellement le nom affiché."
+      },
+      "programs": {
+        "title": "Configuration des programmes",
+        "description": "Sélectionnez les programmes à surveiller et contrôler."
       }
     },
     "error": {
@@ -42,6 +46,10 @@
       "zones": {
         "title": "Configuration des zones",
         "description": "Sélectionnez les zones à surveiller et personnalisez leurs noms."
+      },
+      "programs_options": {
+        "title": "Configuration des programmes",
+        "description": "Sélectionnez les programmes à surveiller et contrôler."
       }
     }
   }

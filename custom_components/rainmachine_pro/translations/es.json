@@ -16,6 +16,10 @@
       "zones": {
         "title": "Configuración de zonas",
         "description": "Selecciona las zonas a monitorizar y personaliza sus nombres. Activa/desactiva cada zona y cambia el nombre mostrado si lo deseas."
+      },
+      "programs": {
+        "title": "Configuración de programas",
+        "description": "Selecciona los programas a monitorizar y controlar."
       }
     },
     "error": {
@@ -42,6 +46,10 @@
       "zones": {
         "title": "Configuración de zonas",
         "description": "Selecciona las zonas a monitorizar y personaliza sus nombres."
+      },
+      "programs_options": {
+        "title": "Configuración de programas",
+        "description": "Selecciona los programas a monitorizar y controlar."
       }
     }
   }

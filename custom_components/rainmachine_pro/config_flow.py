@@ -24,6 +24,7 @@ from .const import (
     CONF_SCAN_INTERVAL_FAST,
     CONF_TIMEOUT,
     CONF_ZONES,
+    CONF_PROGRAMS,
     CONF_PARSERS,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
@@ -44,6 +45,8 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize."""
         self._user_input: dict[str, Any] = {}
         self._available_zones: list[dict] = []
+        self._available_programs: list[dict] = []
+        self._zone_config: dict = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -61,6 +64,7 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 await client.test_connection()
                 self._available_zones = await client.fetch_zones()
+                self._available_programs = await client.fetch_programs()
             except RainMachineAuthError:
                 errors["base"] = "invalid_auth"
             except RainMachineConnectionError:
@@ -98,7 +102,6 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle zone selection step."""
         if user_input is not None:
-            # Build zones config: {uid: {name, enabled}}
             zones = {}
             for zone in self._available_zones:
                 uid = str(zone["uid"])
@@ -110,6 +113,34 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                     "rm_name": rm_name,
                     "enabled": enabled,
                 }
+            self._zone_config = zones
+            return await self.async_step_programs()
+
+        schema_dict = {}
+        for zone in self._available_zones:
+            uid = zone["uid"]
+            rm_name = zone.get("name", f"Zone {uid}")
+            active = zone.get("active", False)
+            schema_dict[vol.Optional(f"zone_{uid}_enabled", default=active)] = bool
+            schema_dict[vol.Optional(f"zone_{uid}_name", default=rm_name)] = str
+
+        return self.async_show_form(
+            step_id="zones",
+            data_schema=vol.Schema(schema_dict),
+            description_placeholders={"zone_count": str(len(self._available_zones))},
+        )
+
+    async def async_step_programs(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle program selection step."""
+        if user_input is not None:
+            programs = {}
+            for program in self._available_programs:
+                pid = str(program["uid"])
+                rm_name = program.get("name", f"Program {pid}")
+                enabled = user_input.get(f"program_{pid}_enabled", True)
+                programs[pid] = {"name": rm_name, "enabled": enabled}
 
             host = self._user_input[CONF_HOST]
             await self.async_set_unique_id(f"rainmachine_pro_{host}")
@@ -130,30 +161,22 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_SCAN_INTERVAL_FAST, DEFAULT_SCAN_INTERVAL_FAST
                     ),
                     CONF_TIMEOUT: self._user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
-                    CONF_ZONES: zones,
+                    CONF_ZONES: self._zone_config,
+                    CONF_PROGRAMS: programs,
                     CONF_PARSERS: list(AVAILABLE_PARSERS.keys()),
                 },
             )
 
-        # Build dynamic form from discovered zones
         schema_dict = {}
-        for zone in self._available_zones:
-            uid = zone["uid"]
-            rm_name = zone.get("name", f"Zone {uid}")
-            active = zone.get("active", False)
-            schema_dict[
-                vol.Optional(f"zone_{uid}_enabled", default=active)
-            ] = bool
-            schema_dict[
-                vol.Optional(f"zone_{uid}_name", default=rm_name)
-            ] = str
+        for program in self._available_programs:
+            pid = program["uid"]
+            rm_name = program.get("name", f"Program {pid}")
+            schema_dict[vol.Optional(f"program_{pid}_enabled", default=True)] = bool
 
         return self.async_show_form(
-            step_id="zones",
+            step_id="programs",
             data_schema=vol.Schema(schema_dict),
-            description_placeholders={
-                "zone_count": str(len(self._available_zones))
-            },
+            description_placeholders={"program_count": str(len(self._available_programs))},
         )
 
     @staticmethod
@@ -170,6 +193,7 @@ class RainMachineProOptionsFlow(OptionsFlow):
         """Initialize options flow."""
         self._config_entry = config_entry
         self._general_options: dict[str, Any] = {}
+        self._zone_options: dict[str, Any] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -229,11 +253,8 @@ class RainMachineProOptionsFlow(OptionsFlow):
                     "rm_name": zone_data.get("rm_name", f"Zone {uid}"),
                     "enabled": enabled,
                 }
-            options = {
-                **self._general_options,
-                CONF_ZONES: zones,
-            }
-            return self.async_create_entry(title="", data=options)
+            self._zone_options = zones
+            return await self.async_step_programs_options()
 
         current_zones = self._config_entry.options.get(CONF_ZONES, {})
 
@@ -274,5 +295,53 @@ class RainMachineProOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id="zones",
+            data_schema=vol.Schema(schema_dict),
+        )
+
+    async def async_step_programs_options(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage program selection."""
+        if user_input is not None:
+            current_programs = self._config_entry.options.get(CONF_PROGRAMS, {})
+            programs = {}
+            for pid, prog_data in current_programs.items():
+                enabled = user_input.get(f"program_{pid}_enabled", prog_data.get("enabled", True))
+                programs[pid] = {"name": prog_data.get("name", f"Program {pid}"), "enabled": enabled}
+            options = {
+                **self._general_options,
+                CONF_ZONES: self._zone_options,
+                CONF_PROGRAMS: programs,
+            }
+            return self.async_create_entry(title="", data=options)
+
+        current_programs = self._config_entry.options.get(CONF_PROGRAMS, {})
+
+        if not current_programs:
+            try:
+                host = self._config_entry.data[CONF_HOST]
+                port = self._config_entry.data[CONF_PORT]
+                password = self._config_entry.data[CONF_PASSWORD]
+                timeout = self._config_entry.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
+                client = RainMachineClient(host, port, password, timeout)
+                rm_programs = await client.fetch_programs()
+                for prog in rm_programs:
+                    pid = str(prog["uid"])
+                    current_programs[pid] = {
+                        "name": prog.get("name", f"Program {pid}"),
+                        "enabled": True,
+                    }
+            except Exception:
+                _LOGGER.warning("Could not fetch programs from RainMachine")
+
+        schema_dict = {}
+        for pid in sorted(current_programs.keys(), key=int):
+            prog_data = current_programs[pid]
+            schema_dict[
+                vol.Optional(f"program_{pid}_enabled", default=prog_data.get("enabled", True))
+            ] = bool
+
+        return self.async_show_form(
+            step_id="programs_options",
             data_schema=vol.Schema(schema_dict),
         )
