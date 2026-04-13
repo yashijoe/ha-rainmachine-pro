@@ -44,6 +44,7 @@ async def async_setup_entry(
 
     # Today watering summary
     entities.append(RainMachineTodayWateringSensor(coordinator, entry))
+    entities.append(RainMachineTodayScheduledWateringSensor(coordinator, entry))
 
     # Rain delay
     entities.append(RainMachineRainDelaySensor(coordinator, entry))
@@ -166,6 +167,40 @@ class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
             "date": today_str,
             "userDuration": f"{mins}:{secs:02d}",
         }
+
+
+class RainMachineTodayScheduledWateringSensor(RainMachineBaseEntity, SensorEntity):
+    """Sensor for today's total scheduled (planned) watering duration."""
+
+    _attr_native_unit_of_measurement = "min"
+    _attr_state_class = SensorStateClass.TOTAL
+    _attr_icon = "mdi:sprinkler-variant"
+    _attr_name = "Today watering scheduled"
+
+    def __init__(self, coordinator, entry):
+        """Initialize."""
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_today_watering_scheduled"
+        self.entity_id = "sensor.rainmachine_today_watering_scheduled"
+
+    @property
+    def last_reset(self) -> datetime:
+        """Return midnight of today (local time, UTC-aware)."""
+        now = datetime.now().astimezone()
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    @property
+    def native_value(self):
+        """Return scheduled duration in minutes."""
+        watering = self.coordinator.data.get("watering", {})
+        days = watering.get("waterLog", {}).get("days", [])
+        if not days:
+            return 0
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        for day in days:
+            if day.get("date") == today_str:
+                return int(day.get("userDuration", 0)) // 60
+        return 0
 
 
 class RainMachineRainDelaySensor(RainMachineBaseEntity, SensorEntity):
