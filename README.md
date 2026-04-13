@@ -78,6 +78,7 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 | Entity | Description | Unit | State Class |
 |--------|-------------|------|-------------|
 | `sensor.rainmachine_today_watering` | Total actual irrigation time today | min | `total` |
+| `sensor.rainmachine_today_watering_scheduled` | Total scheduled irrigation time today | min | `total` |
 | `sensor.rainmachine_rain_delay` | Current rain delay status | — | — |
 | `sensor.rainmachine_zone_<n>` | Per-zone watering details | min | `measurement` |
 | `sensor.rainmachine_parser_*` | Last run time for each weather parser | — | `timestamp` |
