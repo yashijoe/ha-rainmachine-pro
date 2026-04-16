@@ -244,7 +244,7 @@ Each API call has an independent timeout — if one endpoint is slow or unreacha
 
 **"Invalid password"** — The password is the same one you use in the RainMachine app.
 
-**Zone sensors show 0** — If no watering occurred today, zones will show 0 min with flag "No watering today". This is normal.
+**Zone sensors show 0** — If no watering occurred today, zones will show 0 min with flag "No watering". This is normal.
 
 **Statistics graph shows "No statistics found"** — Statistics start collecting after the integration is installed. Historical data from before installation is not available.
 
