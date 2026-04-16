@@ -32,7 +32,7 @@ FLAG_MAP = {
         10: "Delay set by user",
         11: "Program rain restriction",
         12: "Adaptive frequency skip",
-        -1: "No watering today",
+        -1: "No watering",
     },
     "it": {
         0: "Irrigazione normale",
@@ -48,7 +48,7 @@ FLAG_MAP = {
         10: "Ritardo impostato dall'utente",
         11: "Restrizione pioggia del programma",
         12: "Saltato per frequenza adattiva",
-        -1: "Nessuna irrigazione oggi",
+        -1: "Nessuna irrigazione",
     },
     "de": {
         0: "Normale Bewässerung",
@@ -64,7 +64,7 @@ FLAG_MAP = {
         10: "Vom Benutzer gesetzte Verzögerung",
         11: "Programm-Regeneinschränkung",
         12: "Adaptive Frequenz übersprungen",
-        -1: "Keine Bewässerung heute",
+        -1: "Keine Bewässerung",
     },
     "fr": {
         0: "Arrosage normal",
@@ -80,7 +80,7 @@ FLAG_MAP = {
         10: "Délai défini par l'utilisateur",
         11: "Restriction pluie du programme",
         12: "Saut fréquence adaptative",
-        -1: "Pas d'arrosage aujourd'hui",
+        -1: "Pas d'arrosage",
     },
     "es": {
         0: "Riego normal",
@@ -96,7 +96,7 @@ FLAG_MAP = {
         10: "Retraso establecido por el usuario",
         11: "Restricción de lluvia del programa",
         12: "Salto de frecuencia adaptativa",
-        -1: "Sin riego hoy",
+        -1: "Sin riego",
     },
 }
 
