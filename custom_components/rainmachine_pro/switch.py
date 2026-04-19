@@ -17,6 +17,44 @@ _LOGGER = logging.getLogger(__name__)
 # Default duration (seconds) when starting a zone manually
 _DEFAULT_ZONE_DURATION = 600  # 10 minutes
 
+_FREQUENCY_LABELS = {
+    "en": {
+        "daily": "Daily",
+        "every_n": "Every {n} days",
+        "odd": "Odd days",
+        "even": "Even days",
+        "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    },
+    "it": {
+        "daily": "Ogni giorno",
+        "every_n": "Ogni {n} giorni",
+        "odd": "Giorni dispari",
+        "even": "Giorni pari",
+        "days": ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"],
+    },
+    "de": {
+        "daily": "Täglich",
+        "every_n": "Alle {n} Tage",
+        "odd": "Ungerade Tage",
+        "even": "Gerade Tage",
+        "days": ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+    },
+    "fr": {
+        "daily": "Quotidien",
+        "every_n": "Tous les {n} jours",
+        "odd": "Jours impairs",
+        "even": "Jours pairs",
+        "days": ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
+    },
+    "es": {
+        "daily": "Diario",
+        "every_n": "Cada {n} días",
+        "odd": "Días impares",
+        "even": "Días pares",
+        "days": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+    },
+}
+
 
 def _next_run_with_time(prog: dict) -> str | None:
     """Combine program nextRun date with startTime (minutes from midnight).
@@ -41,8 +79,8 @@ def _next_run_with_time(prog: dict) -> str | None:
         return next_run
 
 
-def _frequency_label(freq: dict) -> str:
-    """Return a human-readable label for a program frequency.
+def _frequency_label(freq: dict, lang: str = "en") -> str:
+    """Return a translated human-readable label for a program frequency.
 
     RainMachine frequency encoding:
       type 0, param 0        → Daily
@@ -52,26 +90,30 @@ def _frequency_label(freq: dict) -> str:
       type 4, param 0        → Even days
       type 4, param 1        → Odd days
     """
+    t = _FREQUENCY_LABELS.get(lang, _FREQUENCY_LABELS["en"])
     ftype = int(freq.get("type", 0))
     param = freq.get("param", "0")
 
     if ftype == 0:
-        return "Daily"
+        return t["daily"]
     if ftype == 1:
         try:
-            return f"Every {int(param)} days"
+            return t["every_n"].format(n=int(param))
         except (ValueError, TypeError):
-            return f"Every {param} days"
+            return t["every_n"].format(n=param)
     if ftype == 4:
-        return "Odd days" if str(param) == "1" else "Even days"
+        return t["odd"] if str(param) == "1" else t["even"]
     if ftype == 2:
         # param: 10-char string "00SSFTWTM0"
         # positions (left→right): 0=pad,1=pad,2=Sun,3=Sat,4=Fri,5=Thu,6=Wed,7=Tue,8=Mon,9=pad
-        day_map = {2: "Sun", 3: "Sat", 4: "Fri", 5: "Thu", 6: "Wed", 7: "Tue", 8: "Mon"}
+        # day_order maps param index → index in _FREQUENCY_LABELS["days"] (Mon=0 … Sun=6)
+        day_order = {8: 0, 7: 1, 6: 2, 5: 3, 4: 4, 3: 5, 2: 6}
         s = str(param)
-        active = {day_map[i] for i, c in enumerate(s) if c == "1" and i in day_map}
-        order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        return ", ".join(d for d in order if d in active) or "Custom"
+        active_indices = sorted(
+            (day_order[i] for i, c in enumerate(s) if c == "1" and i in day_order)
+        )
+        day_names = t["days"]
+        return ", ".join(day_names[idx] for idx in active_indices) or "Custom"
     return f"type={ftype} param={param}"
 
 
@@ -288,7 +330,7 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
                 if start_time:
                     attrs["start_time"] = start_time
                 if freq is not None:
-                    attrs["frequency"] = _frequency_label(freq)
+                    attrs["frequency"] = _frequency_label(freq, self._get_lang())
                 break
         return attrs
 
