@@ -14,7 +14,6 @@ from .entity import RainMachineBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
 
-# Default duration (seconds) when starting a zone manually
 _DEFAULT_ZONE_DURATION = 600  # 10 minutes
 
 _FREQUENCY_LABELS = {
@@ -55,9 +54,17 @@ _FREQUENCY_LABELS = {
     },
 }
 
+_DURATION_TYPE_LABELS = {
+    "en": {"suggested": "suggested", "fixed": "fixed"},
+    "it": {"suggested": "suggerito", "fixed": "fisso"},
+    "de": {"suggested": "vorgeschlagen", "fixed": "fest"},
+    "fr": {"suggested": "sugg\u00e9r\u00e9", "fixed": "fixe"},
+    "es": {"suggested": "sugerido", "fixed": "fijo"},
+}
+
 
 def _next_run_with_time(prog: dict) -> str | None:
-    """Combine program nextRun date with startTime (minutes from midnight)."""
+    """Combine program nextRun date with startTime."""
     next_run = prog.get("nextRun")
     if not next_run:
         return None
@@ -79,7 +86,6 @@ def _frequency_label(freq: dict, lang: str = "en") -> str:
     t = _FREQUENCY_LABELS.get(lang, _FREQUENCY_LABELS["en"])
     ftype = int(freq.get("type", 0))
     param = freq.get("param", "0")
-
     if ftype == 0:
         return t["daily"]
     if ftype == 1:
@@ -126,7 +132,6 @@ async def async_setup_entry(
     zones_config = entry.options.get(CONF_ZONES, {})
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
 
-    # Zone switches — only enabled zones
     for zone in fast_coordinator.data.get("zones", []):
         uid = zone["uid"]
         zone_cfg = zones_config.get(str(uid), {})
@@ -136,7 +141,6 @@ async def async_setup_entry(
         entities.append(RainMachineZoneRunSwitch(fast_coordinator, coordinator, entry, uid, name))
         entities.append(RainMachineZoneEnabledSwitch(coordinator, entry, uid, name))
 
-    # Program switches
     for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
         name = program.get("name", f"Program {pid}")
@@ -145,7 +149,6 @@ async def async_setup_entry(
             entities.append(RainMachineProgramRunSwitch(fast_coordinator, coordinator, entry, pid, name))
             entities.append(RainMachineProgramEnabledSwitch(coordinator, entry, pid, name))
 
-    # Global switches
     entities.append(RainMachineFreezeProtectionSwitch(coordinator, entry))
     entities.append(RainMachineExtraWaterSwitch(coordinator, entry))
 
@@ -171,7 +174,6 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return True if zone is currently running (check queue)."""
         for item in self.coordinator.data.get("queue", []):
             if item.get("zid") == self._uid and item.get("running"):
                 return True
@@ -179,7 +181,6 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return last_run and next_run attributes."""
         attrs = {}
 
         next_run_found = False
@@ -229,7 +230,6 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
         return attrs
 
     async def async_turn_on(self, **kwargs) -> None:
-        """Start zone irrigation."""
         try:
             await self.coordinator.client.action_start_zone(self._uid, _DEFAULT_ZONE_DURATION)
             await self.coordinator.async_request_refresh()
@@ -237,7 +237,6 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
             _LOGGER.error("Failed to start zone %s: %s", self._uid, err)
 
     async def async_turn_off(self, **kwargs) -> None:
-        """Stop zone irrigation."""
         try:
             await self.coordinator.client.action_stop_zone(self._uid)
             await self.coordinator.async_request_refresh()
@@ -260,7 +259,6 @@ class RainMachineZoneEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return True if zone is active/enabled."""
         for zone in self.coordinator.data.get("zones", []):
             if zone["uid"] == self._uid:
                 return zone.get("active", False)
@@ -300,7 +298,6 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return True if program is currently running (check queue)."""
         for item in self.coordinator.data.get("queue", []):
             if item.get("pid") == self._pid and item.get("running"):
                 return True
@@ -308,13 +305,17 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return scheduling info and per-zone planned durations."""
         attrs = {}
+        lang = self._get_lang()
+        type_labels = _DURATION_TYPE_LABELS.get(lang, _DURATION_TYPE_LABELS["en"])
+        zones_cfg = self._entry.options.get(CONF_ZONES, {})
         zone_properties = self._slow_coordinator.data.get("zone_properties", {})
 
         for prog in self._slow_coordinator.data.get("programs", []):
             if prog["uid"] != self._pid:
                 continue
+
+            attrs["enabled"] = "on" if prog.get("active", False) else "off"
 
             next_run = _next_run_with_time(prog)
             last_run = prog.get("lastRun")
@@ -327,15 +328,18 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
             if start_time:
                 attrs["start_time"] = start_time
             if freq is not None:
-                attrs["frequency"] = _frequency_label(freq, self._get_lang())
+                attrs["frequency"] = _frequency_label(freq, lang)
 
             total_duration = 0
             for wt in prog.get("wateringTimes", []):
                 if not wt.get("active", False):
                     continue
+                zid = wt["id"]
+                ha_name = zones_cfg.get(str(zid), {}).get("name") or wt.get("name", f"Zone {zid}")
                 seconds = _zone_planned_seconds(wt, zone_properties)
-                zone_name = wt.get("name", f"Zone {wt['id']}")
-                attrs[f"zone_{zone_name}"] = seconds
+                duration_type = "fixed" if wt.get("duration", 0) > 0 else "suggested"
+                attrs[ha_name] = seconds
+                attrs[f"{ha_name}_type"] = type_labels[duration_type]
                 total_duration += seconds
 
             if total_duration > 0:
@@ -417,18 +421,14 @@ class RainMachineFreezeProtectionSwitch(RainMachineBaseEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         try:
-            await self.coordinator.client.action_set_global_restriction(
-                {"freezeProtectEnabled": True}
-            )
+            await self.coordinator.client.action_set_global_restriction({"freezeProtectEnabled": True})
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to enable freeze protection: %s", err)
 
     async def async_turn_off(self, **kwargs) -> None:
         try:
-            await self.coordinator.client.action_set_global_restriction(
-                {"freezeProtectEnabled": False}
-            )
+            await self.coordinator.client.action_set_global_restriction({"freezeProtectEnabled": False})
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to disable freeze protection: %s", err)
@@ -453,18 +453,14 @@ class RainMachineExtraWaterSwitch(RainMachineBaseEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         try:
-            await self.coordinator.client.action_set_global_restriction(
-                {"hotDaysExtraWatering": True}
-            )
+            await self.coordinator.client.action_set_global_restriction({"hotDaysExtraWatering": True})
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to enable extra water on hot days: %s", err)
 
     async def async_turn_off(self, **kwargs) -> None:
         try:
-            await self.coordinator.client.action_set_global_restriction(
-                {"hotDaysExtraWatering": False}
-            )
+            await self.coordinator.client.action_set_global_restriction({"hotDaysExtraWatering": False})
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to disable extra water on hot days: %s", err)

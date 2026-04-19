@@ -58,21 +58,13 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 4. Click **Submit**
 5. **Zone configuration** — enable/disable each zone and customize display names; only enabled zones create entities
 6. **Program configuration** — enable/disable each program and customize display names; only enabled programs create entities
-7. **Parser configuration** — select which weather parsers generate sensor entities; parsers are listed by their short name (e.g. WUnderground, OpenWeatherMap, METNO); parsers that have already run are pre-enabled; you can also rename each entity at this step
+7. **Parser configuration** — select which weather parsers generate sensor entities
 
 ### Options (post-setup)
 
-Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Configure** to change:
-
-- Update interval (slow, minutes) and zone/program update interval (fast, seconds)
-- Timeout
-- Zone names and enabled/disabled state
-- Program names and enabled/disabled state
-- Weather parsers — enable/disable each parser and rename its entity; parsers are listed by short name; list fetched fresh from the device each time
+Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Configure** to change update intervals, timeout, zone/program names, and parser configuration.
 
 ## Entities
-
-Zone and program names are defined by the user inside the RainMachine app and will appear exactly as configured (e.g., "Front Garden", "Lawn", "Summer Program").
 
 ### Sensors
 
@@ -84,8 +76,8 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 | `sensor.rainmachine_zone_<n>` | Per-zone watering details | min | `measurement` |
 | `sensor.rainmachine_parser_*` | Last run time for each weather parser | — | `timestamp` |
 | `sensor.rainmachine_forecast_<n>` | Daily forecast (yesterday through +5 days) | — | — |
-| `sensor.<zone>_run_completion_time` | Estimated end time for currently running zone (attributes: `last_run_start`, `last_run_end`, `next_run`) | — | `timestamp` |
-| `sensor.<program>_run_completion_time` | Estimated end time for currently running program (attributes: `last_run`, `next_run`) | — | `timestamp` |
+| `sensor.<zone>_run_completion_time` | Estimated end time for currently running zone | — | `timestamp` |
+| `sensor.<program>_run_completion_time` | Estimated end time for currently running program | — | `timestamp` |
 
 ### Binary Sensors
 
@@ -105,7 +97,7 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 |--------|-------------|
 | `switch.<zone_name>` | Start/stop a zone manually (10 min default) — attributes: `last_run_start`, `last_run_end`, `next_run` |
 | `switch.<zone_name>_enabled` | Enable/disable a zone |
-| `switch.<program_name>` | Start/stop a program — attributes: `last_run`, `next_run`, `start_time`, `frequency`, `zone_<name>` (planned seconds per active zone), `total_duration` (total planned seconds) |
+| `switch.<program_name>` | Start/stop a program — see attributes below |
 | `switch.<program_name>_enabled` | Enable/disable a program |
 | `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
 | `switch.rainmachine_extra_water_on_hot_days` | Enable/disable extra watering on hot days |
@@ -141,89 +133,38 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 - `userDuration` / `userDuration_display` — scheduled duration
 - `realDuration` / `realDuration_display` — actual duration
 - `startTime` — scheduled start time
-- `flag` — reason if watering was skipped (e.g., "Water surplus", "Stopped by rain sensor")
-- `program_<name>` — planned irrigation duration in seconds for each program that includes this zone (weather-adaptive: `referenceTime × userPercentage`; fixed: configured duration)
+- `flag` — reason if watering was skipped
+- `<program name>` — planned duration in seconds for each program that includes this zone
+- `<program name>_type` — `suggested` (weather-adaptive) or `fixed`, translated per HA language
 
 **Program switches** include:
 
-- `zone_<name>` — planned duration in seconds for each active zone in the program
-- `total_duration` — total planned duration in seconds across all active zones
+- `enabled` — `on` or `off` (program active state)
+- `next_run` / `last_run` — next and last run timestamps
+- `start_time` — scheduled start time (HH:MM)
+- `frequency` — translated frequency label (e.g. "Daily", "Ogni giorno")
+- `<zone name>` — planned duration in seconds for each active zone (integer, compatible with HA statistics)
+- `<zone name>_type` — `suggested` (weather-adaptive) or `fixed`, translated per HA language
+- `total_duration` — total planned seconds across all active zones
 
 **Forecast sensors** include:
 
-- `temperature` / `min_temperature` / `max_temperature` — with display variants
+- `temperature` / `min_temperature` / `max_temperature`
 - `rain` / `precipitation_forecast` — actual and forecast rainfall in mm
-- `evapotranspiration` — ET0 value in mm
-- `condition` / `condition_code` — weather condition string and numeric code
+- `EvapoTranspiration` — ET0 value in mm
+- `meteocode` / `state_translated`
 
 **Rain delay sensor** includes:
 
-- `days_remaining` / `hours_remaining` / `minutes_remaining`
-- `seconds_remaining`
-- `ends_at` — timestamp when delay expires
-
-## Dashboard Example
-
-```yaml
-type: grid
-cards:
-  - type: heading
-    heading: "Irrigation"
-    heading_style: title
-    badges:
-      - type: entity
-        entity: sensor.rainmachine_today_watering
-        color: brown
-  - type: tile
-    entity: sensor.rainmachine_zone_1
-    state_content:
-      - real_duration_display
-      - user_duration_display
-      - flag
-  - type: tile
-    entity: sensor.rainmachine_zone_2
-    state_content:
-      - real_duration_display
-      - user_duration_display
-      - flag
-  - type: tile
-    entity: sensor.rainmachine_zone_3
-    state_content:
-      - real_duration_display
-      - user_duration_display
-      - flag
-  - type: tile
-    entity: sensor.rainmachine_zone_4
-    state_content:
-      - real_duration_display
-      - user_duration_display
-      - flag
-  - type: heading
-    heading: Rain Delay
-  - type: entities
-    entities:
-      - entity: number.rainmachine_rain_delay_days
-        name: Delay days
-      - entity: sensor.rainmachine_rain_delay
-        name: Current status
-  - type: heading
-    heading: Watering History
-  - type: statistics-graph
-    entities:
-      - sensor.rainmachine_today_watering
-    chart_type: bar
-    period: day
-    days_to_show: 7
-    stat_types:
-      - max
-```
+- `days_remaining` / `hours_remaining` / `minutes_remaining` / `seconds_remaining`
+- `ends_at`
 
 ## How It Works
 
-The integration polls your RainMachine's local API using two independent coordinators. All communication happens on your LAN — no cloud services are involved.
+The integration polls your RainMachine's local API using two independent coordinators:
 
-- **Slow coordinator** (default every 5 min) — weather parsers, forecast, restrictions, rain delay, provision, firmware update, zone properties
-- **Fast coordinator** (default every 10 s) — zone list, program list, watering queue (used by run switches and run completion time sensors)
+- **Slow coordinator** (default every 5 min) — weather, forecast, restrictions, rain delay, provision, firmware, zone properties
+- **Fast coordinator** (default every 10 s) — zone list, program list, watering queue
 
 **API endpoints used:**
 
@@ -244,21 +185,19 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/provision` | Device info and hardware version |
 | `/api/4/machine/update` | Firmware update status |
 
-Each API call has an independent timeout — if one endpoint is slow or unreachable, the others still update normally.
-
 ## Troubleshooting
 
-**"Unable to connect"** — Verify your RainMachine IP and port. Try opening `https://<IP>:8080` in a browser (accept the self-signed certificate warning).
+**"Unable to connect"** — Verify your RainMachine IP and port. Try opening `https://<IP>:8080` in a browser.
 
-**"Invalid password"** — The password is the same one you use in the RainMachine app.
+**"Invalid password"** — Same password used in the RainMachine app.
 
-**Zone sensors show 0** — If no watering occurred today, zones will show 0 min with flag "No watering". This is normal.
+**Zone sensors show 0** — Normal if no watering occurred today.
 
-**Statistics graph shows "No statistics found"** — Statistics start collecting after the integration is installed. Historical data from before installation is not available.
+**Statistics graph shows "No statistics found"** — Statistics start collecting after installation; historical data is not available.
 
-**Slow response / timeouts** — Increase the timeout value in the integration options. The `/watering/log/details` endpoint on some RainMachine models can take 15–20 seconds to respond.
+**Slow response / timeouts** — Increase the timeout in integration options.
 
-**Zone/program switches not appearing** — Zones and programs are loaded at setup time. If you add new zones or programs in the RainMachine app, reload the integration from **Settings** → **Devices & Services** → **RainMachine Pro** → **⋮** → **Reload**.
+**Zone/program switches not appearing** — Reload the integration from **Settings** → **Devices & Services** → **RainMachine Pro** → **⋮** → **Reload**.
 
 ## Contributing
 

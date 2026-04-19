@@ -30,6 +30,14 @@ from .entity import RainMachineBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+_DURATION_TYPE_LABELS = {
+    "en": {"suggested": "suggested", "fixed": "fixed"},
+    "it": {"suggested": "suggerito", "fixed": "fisso"},
+    "de": {"suggested": "vorgeschlagen", "fixed": "fest"},
+    "fr": {"suggested": "sugg\u00e9r\u00e9", "fixed": "fixe"},
+    "es": {"suggested": "sugerido", "fixed": "fijo"},
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -42,14 +50,10 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = []
 
-    # Today watering summary
     entities.append(RainMachineTodayWateringSensor(coordinator, entry))
     entities.append(RainMachineTodayScheduledWateringSensor(coordinator, entry))
-
-    # Rain delay
     entities.append(RainMachineRainDelaySensor(coordinator, entry))
 
-    # Zone sensors — only enabled zones
     for uid_str, zone_data in zones.items():
         if zone_data.get("enabled", False):
             entities.append(
@@ -59,7 +63,6 @@ async def async_setup_entry(
                 )
             )
 
-    # Parser sensors — build from stored dict; migrate old list format if needed
     parsers_config = entry.options.get(CONF_PARSERS, {})
     if isinstance(parsers_config, list):
         parsers_config = {
@@ -78,11 +81,9 @@ async def async_setup_entry(
             RainMachineParserSensor(coordinator, entry, int(uid_str), display_name)
         )
 
-    # Forecast sensors (7 days: yesterday + today + 5 days)
     for i in range(7):
         entities.append(RainMachineForecastSensor(coordinator, entry, i))
 
-    # Run completion time — use fast coordinator for real-time updates
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     enabled_zones_cfg = entry.options.get(CONF_ZONES, {})
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
@@ -123,20 +124,17 @@ class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
     _attr_name = "Today watering"
 
     def __init__(self, coordinator, entry):
-        """Initialize."""
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_today_watering"
         self.entity_id = "sensor.rainmachine_today_watering"
 
     @property
     def last_reset(self) -> datetime:
-        """Return midnight of today (local time, UTC-aware)."""
         now = datetime.now().astimezone()
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     @property
     def native_value(self):
-        """Return state."""
         watering = self.coordinator.data.get("watering", {})
         days = watering.get("waterLog", {}).get("days", [])
         if not days:
@@ -149,7 +147,6 @@ class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return extra attributes."""
         watering = self.coordinator.data.get("watering", {})
         days = watering.get("waterLog", {}).get("days", [])
         today_str = datetime.now().strftime("%Y-%m-%d")
@@ -167,7 +164,7 @@ class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
 
 
 class RainMachineTodayScheduledWateringSensor(RainMachineBaseEntity, SensorEntity):
-    """Sensor for today's total scheduled (planned) watering duration."""
+    """Sensor for today's total scheduled watering duration."""
 
     _attr_native_unit_of_measurement = "min"
     _attr_state_class = SensorStateClass.TOTAL
@@ -175,20 +172,17 @@ class RainMachineTodayScheduledWateringSensor(RainMachineBaseEntity, SensorEntit
     _attr_name = "Today watering scheduled"
 
     def __init__(self, coordinator, entry):
-        """Initialize."""
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_today_watering_scheduled"
         self.entity_id = "sensor.rainmachine_today_watering_scheduled"
 
     @property
     def last_reset(self) -> datetime:
-        """Return midnight of today (local time, UTC-aware)."""
         now = datetime.now().astimezone()
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     @property
     def native_value(self):
-        """Return scheduled duration in minutes."""
         watering = self.coordinator.data.get("watering", {})
         days = watering.get("waterLog", {}).get("days", [])
         if not days:
@@ -207,14 +201,12 @@ class RainMachineRainDelaySensor(RainMachineBaseEntity, SensorEntity):
     _attr_name = "Rain delay"
 
     def __init__(self, coordinator, entry):
-        """Initialize."""
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_rain_delay"
         self.entity_id = "sensor.rainmachine_rain_delay"
 
     @property
     def native_value(self):
-        """Return state as AppDaemon format."""
         rd = self.coordinator.data.get("raindelay", {})
         delay_sec = int(rd.get("delayCounter", -1))
         if delay_sec <= 0:
@@ -226,14 +218,12 @@ class RainMachineRainDelaySensor(RainMachineBaseEntity, SensorEntity):
 
     @property
     def icon(self):
-        """Return icon."""
         rd = self.coordinator.data.get("raindelay", {})
         delay_sec = int(rd.get("delayCounter", -1))
         return "mdi:timer-sand" if delay_sec > 0 else "mdi:timer-off"
 
     @property
     def extra_state_attributes(self):
-        """Return extra attributes."""
         rd = self.coordinator.data.get("raindelay", {})
         delay_sec = int(rd.get("delayCounter", -1))
         if delay_sec <= 0:
@@ -247,9 +237,7 @@ class RainMachineRainDelaySensor(RainMachineBaseEntity, SensorEntity):
         days = delay_sec // 86400
         hours = (delay_sec % 86400) // 3600
         minutes = (delay_sec % 3600) // 60
-        ends_at = (datetime.now() + timedelta(seconds=delay_sec)).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        ends_at = (datetime.now() + timedelta(seconds=delay_sec)).strftime("%Y-%m-%d %H:%M:%S")
         return {
             "days_remaining": days,
             "hours_remaining": hours,
@@ -267,7 +255,6 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
     _attr_icon = "mdi:sprinkler"
 
     def __init__(self, coordinator, entry, uid: int, zone_name: str):
-        """Initialize."""
         super().__init__(coordinator, entry)
         self._uid = uid
         self._zone_name = zone_name
@@ -276,7 +263,6 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
         self.entity_id = f"sensor.rainmachine_uid{uid}_watering"
 
     def _get_zone_data(self) -> dict | None:
-        """Get zone data from coordinator, searching across all programs."""
         details = self.coordinator.data.get("details", {})
         all_days = details.get("waterLog", {}).get("days", [])
         if not all_days:
@@ -288,30 +274,39 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
         return None
 
     def _get_program_durations(self) -> dict:
-        """Return planned duration in seconds per program for this zone."""
+        """Return planned duration and type per program for this zone."""
+        lang = self._get_lang()
+        type_labels = _DURATION_TYPE_LABELS.get(lang, _DURATION_TYPE_LABELS["en"])
         zone_properties = self.coordinator.data.get("zone_properties", {})
         zprops = zone_properties.get(self._uid, {})
         ref_time = zprops.get("waterSense", {}).get("referenceTime", 0)
+        programs_cfg = self._entry.options.get(CONF_PROGRAMS, {})
 
-        durations = {}
+        result = {}
         for prog in self.coordinator.data.get("programs", []):
             for wt in prog.get("wateringTimes", []):
                 if wt.get("id") == self._uid and wt.get("active", False):
                     fixed_dur = wt.get("duration", 0)
                     if fixed_dur > 0:
                         seconds = fixed_dur
+                        duration_type = "fixed"
                     elif ref_time > 0:
                         seconds = int(ref_time * wt.get("userPercentage", 1.0))
+                        duration_type = "suggested"
                     else:
                         seconds = 0
-                    prog_name = prog.get("name", f"Program {prog['uid']}")
-                    durations[f"program_{prog_name}"] = seconds
+                        duration_type = "suggested"
+                    ha_name = (
+                        programs_cfg.get(str(prog["uid"]), {}).get("name")
+                        or prog.get("name", f"Program {prog['uid']}")
+                    )
+                    result[ha_name] = seconds
+                    result[f"{ha_name}_type"] = type_labels[duration_type]
                     break
-        return durations
+        return result
 
     @property
     def native_value(self):
-        """Return state."""
         zone = self._get_zone_data()
         if not zone:
             return 0
@@ -320,7 +315,6 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return extra attributes matching AppDaemon format."""
         lang = self._get_lang()
         flag_map = FLAG_MAP.get(lang, FLAG_MAP["en"])
         zone = self._get_zone_data()
@@ -344,20 +338,15 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
             flag = zone.get("flag", -1)
 
             if lang == "it":
-                user_label = "previsti"
-                real_label = "effettivi"
+                user_label, real_label = "previsti", "effettivi"
             elif lang == "de":
-                user_label = "geplant"
-                real_label = "tats\u00e4chlich"
+                user_label, real_label = "geplant", "tats\u00e4chlich"
             elif lang == "fr":
-                user_label = "pr\u00e9vus"
-                real_label = "effectifs"
+                user_label, real_label = "pr\u00e9vus", "effectifs"
             elif lang == "es":
-                user_label = "previstos"
-                real_label = "efectivos"
+                user_label, real_label = "previstos", "efectivos"
             else:
-                user_label = "scheduled"
-                real_label = "actual"
+                user_label, real_label = "scheduled", "actual"
 
             attrs = {
                 "userDuration": user_dur,
@@ -381,7 +370,6 @@ class RainMachineParserSensor(RainMachineBaseEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(self, coordinator, entry, uid: int, description: str):
-        """Initialize."""
         super().__init__(coordinator, entry)
         self._uid = uid
         self._description = description
@@ -391,7 +379,6 @@ class RainMachineParserSensor(RainMachineBaseEntity, SensorEntity):
         self.entity_id = f"sensor.rainmachine_{suffix}_last_run"
 
     def _find_parser(self) -> dict | None:
-        """Find matching parser data by UID."""
         for parser in self.coordinator.data.get("parsers", []):
             if parser.get("uid") == self._uid:
                 return parser
@@ -399,7 +386,6 @@ class RainMachineParserSensor(RainMachineBaseEntity, SensorEntity):
 
     @property
     def native_value(self):
-        """Return state."""
         parser = self._find_parser()
         if not parser:
             return None
@@ -418,14 +404,12 @@ class RainMachineParserSensor(RainMachineBaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return extra attributes."""
         parser = self._find_parser()
         active = parser is not None and parser.get("lastRun") not in (None, "unknown")
         return {"active": active}
 
     @property
     def icon(self):
-        """Return icon based on forecast condition."""
         forecast = self.coordinator.data.get("forecast", {})
         try:
             daily = forecast["mixerData"][0]["dailyValues"]
@@ -444,14 +428,12 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
     """Sensor for daily forecast conditions."""
 
     def __init__(self, coordinator, entry, index: int):
-        """Initialize."""
         super().__init__(coordinator, entry)
         self._index = index
         self._attr_unique_id = f"{entry.entry_id}_forecast_{index}"
         self.entity_id = f"sensor.rainmachine_forecast_condition_{index}"
 
     def _get_forecast_day(self) -> tuple[dict | None, int]:
-        """Get forecast data for this index."""
         forecast = self.coordinator.data.get("forecast", {})
         try:
             daily_values = forecast["mixerData"][0]["dailyValues"]
@@ -474,9 +456,7 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
         return None, 0
 
     def _get_day_label(self, delta: int) -> str:
-        """Get translated day label."""
         lang = self._get_lang()
-
         day_names_map = {
             "it": {0: "Luned\u00ec", 1: "Marted\u00ec", 2: "Mercoled\u00ec", 3: "Gioved\u00ec", 4: "Venerd\u00ec", 5: "Sabato", 6: "Domenica"},
             "de": {0: "Montag", 1: "Dienstag", 2: "Mittwoch", 3: "Donnerstag", 4: "Freitag", 5: "Samstag", 6: "Sonntag"},
@@ -491,24 +471,20 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
             "es": {-1: "Ayer", 0: "Hoy", 1: "Ma\u00f1ana"},
             "en": {-1: "Yesterday", 0: "Today", 1: "Tomorrow"},
         }
-
         relatives = relative_map.get(lang, relative_map["en"])
         if delta in relatives:
             return relatives[delta]
-
         day_names = day_names_map.get(lang, day_names_map["en"])
         target = datetime.today().date() + timedelta(days=delta)
         return day_names.get(target.weekday(), str(target))
 
     @property
     def name(self):
-        """Return dynamic name based on day offset."""
         _, delta = self._get_forecast_day()
         return self._get_day_label(delta)
 
     @property
     def native_value(self):
-        """Return state."""
         data, _ = self._get_forecast_day()
         if not data:
             return "unknown"
@@ -517,13 +493,11 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
 
     @property
     def icon(self):
-        """Return icon."""
         condition = self.native_value
         return WEATHER_ICONS.get(condition, "mdi:weather-cloudy-alert")
 
     @property
     def extra_state_attributes(self):
-        """Return extra attributes matching AppDaemon format."""
         data, delta = self._get_forecast_day()
         if not data:
             return {}
@@ -532,7 +506,6 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
         condition = WEATHER_CONDITIONS.get(code, "unknown")
         conditions_translated = WEATHER_CONDITIONS_TRANSLATED.get(lang, WEATHER_CONDITIONS_TRANSLATED["en"])
         state_translated = conditions_translated.get(condition, conditions_translated.get("unknown", "Unknown"))
-
         rain_labels = {
             "it": {"rain": "di pioggia", "forecast": "di pioggia prevista"},
             "de": {"rain": "Regen", "forecast": "Regen vorhergesagt"},
@@ -541,7 +514,6 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
             "en": {"rain": "rain", "forecast": "rain forecast"},
         }
         labels = rain_labels.get(lang, rain_labels["en"])
-
         return {
             "temperature": int(data.get("temperature", 0)),
             "temperature_unit": "\u00b0C",
@@ -590,7 +562,6 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return estimated completion time or None if not running."""
         for item in self.coordinator.data.get("queue", []):
             if item.get("zid") == self._uid and item.get("running"):
                 remaining = item.get("remaining", 0)
@@ -600,7 +571,6 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return last_run and next_run attributes."""
         attrs = {}
         for item in self.coordinator.data.get("queue", []):
             if item.get("zid") == self._uid and not item.get("running"):
@@ -622,9 +592,7 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
                             if start and real_dur:
                                 try:
                                     dt = datetime.fromisoformat(start)
-                                    attrs["last_run_end"] = (
-                                        dt + timedelta(seconds=real_dur)
-                                    ).isoformat()
+                                    attrs["last_run_end"] = (dt + timedelta(seconds=real_dur)).isoformat()
                                 except (ValueError, TypeError):
                                     pass
                             break
@@ -650,7 +618,6 @@ class RainMachineProgramRunCompletionTime(RainMachineBaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return estimated completion time or None if not running."""
         for item in self.coordinator.data.get("queue", []):
             if item.get("pid") == self._pid and item.get("running"):
                 remaining = item.get("remaining", 0)
@@ -660,7 +627,6 @@ class RainMachineProgramRunCompletionTime(RainMachineBaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return last_run and next_run from program data."""
         attrs = {}
         for prog in self._slow_coordinator.data.get("programs", []):
             if prog["uid"] == self._pid:
