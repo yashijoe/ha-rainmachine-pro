@@ -104,7 +104,7 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 |--------|-------------|
 | `switch.<zone_name>` | Start/stop a zone manually (10 min default) — attributes: `last_run_start`, `last_run_end`, `next_run` (date + time, derived from the program that schedules the zone) |
 | `switch.<zone_name>_enabled` | Enable/disable a zone |
-| `switch.<program_name>` | Start/stop a program — attributes: `last_run`, `next_run` (date + time) |
+| `switch.<program_name>` | Start/stop a program — attributes: `last_run`, `next_run` (date + time), `start_time` (HH:MM), `frequency` (e.g. "Daily", "Every 3 days", "Mon, Wed, Fri", "Odd days") |
 | `switch.<program_name>_enabled` | Enable/disable a program |
 | `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
 | `switch.rainmachine_extra_water_on_hot_days` | Enable/disable extra watering on hot days |
