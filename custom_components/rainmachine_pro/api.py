@@ -149,6 +149,11 @@ class RainMachineClient:
     async def get_machine_update(self, session: aiohttp.ClientSession) -> dict:
         return await self._get(session, "machine/update")
 
+    async def get_zone_properties(self, session: aiohttp.ClientSession) -> dict:
+        """Fetch zone properties; returns dict keyed by zone uid."""
+        data = await self._get(session, "zone/properties")
+        return {z["uid"]: z for z in data.get("zones", [])}
+
     # -------------------------------------------------------------------------
     # Action methods (each opens its own session)
     # -------------------------------------------------------------------------
@@ -251,6 +256,7 @@ class RainMachineClient:
                 ("queue",                    self.get_watering_queue(session)),
                 ("provision",                self.get_provision(session)),
                 ("machine_update",           self.get_machine_update(session)),
+                ("zone_properties",          self.get_zone_properties(session)),
             ]:
                 try:
                     data[key] = await coro

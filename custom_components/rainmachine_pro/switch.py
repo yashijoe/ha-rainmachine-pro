@@ -1,7 +1,6 @@
 """Switch platform for RainMachine Pro."""
 
 import logging
-import re
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -34,7 +33,7 @@ _FREQUENCY_LABELS = {
         "days": ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"],
     },
     "de": {
-        "daily": "Täglich",
+        "daily": "T\u00e4glich",
         "every_n": "Alle {n} Tage",
         "odd": "Ungerade Tage",
         "even": "Gerade Tage",
@@ -49,10 +48,10 @@ _FREQUENCY_LABELS = {
     },
     "es": {
         "daily": "Diario",
-        "every_n": "Cada {n} días",
-        "odd": "Días impares",
-        "even": "Días pares",
-        "days": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+        "every_n": "Cada {n} d\u00edas",
+        "odd": "D\u00edas impares",
+        "even": "D\u00edas pares",
+        "days": ["Lun", "Mar", "Mi\u00e9", "Jue", "Vie", "S\u00e1b", "Dom"],
     },
 }
 
@@ -99,6 +98,19 @@ def _frequency_label(freq: dict, lang: str = "en") -> str:
         day_names = t["days"]
         return ", ".join(day_names[idx] for idx in active_indices) or "Custom"
     return f"type={ftype} param={param}"
+
+
+def _zone_planned_seconds(wt: dict, zone_properties: dict) -> int:
+    """Return planned duration in seconds for a wateringTime entry."""
+    fixed_dur = wt.get("duration", 0)
+    if fixed_dur > 0:
+        return fixed_dur
+    zid = wt["id"]
+    zprops = zone_properties.get(zid, {})
+    ref_time = zprops.get("waterSense", {}).get("referenceTime", 0)
+    if ref_time > 0:
+        return int(ref_time * wt.get("userPercentage", 1.0))
+    return 0
 
 
 async def async_setup_entry(
@@ -298,49 +310,37 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
     def extra_state_attributes(self) -> dict:
         """Return scheduling info and per-zone planned durations."""
         attrs = {}
+        zone_properties = self._slow_coordinator.data.get("zone_properties", {})
 
         for prog in self._slow_coordinator.data.get("programs", []):
-            if prog["uid"] == self._pid:
-                next_run = _next_run_with_time(prog)
-                last_run = prog.get("lastRun")
-                start_time = prog.get("startTime")
-                freq = prog.get("frequency")
-                if next_run:
-                    attrs["next_run"] = next_run
-                if last_run:
-                    attrs["last_run"] = last_run
-                if start_time:
-                    attrs["start_time"] = start_time
-                if freq is not None:
-                    attrs["frequency"] = _frequency_label(freq, self._get_lang())
-                break
+            if prog["uid"] != self._pid:
+                continue
 
-        zone_names = {
-            z["uid"]: z.get("name", f"Zone {z['uid']}")
-            for z in self._slow_coordinator.data.get("zones", [])
-        }
-        details = self._slow_coordinator.data.get("dailystats_details", {})
-        days = details.get("DailyStatsDetails", [])
-        if days:
-            for prog in days[0].get("simulatedPrograms", []):
-                if prog.get("id") == self._pid:
-                    total_planned = 0
-                    total_computed = 0
-                    for zone in prog.get("zones", []):
-                        zid = zone.get("id")
-                        zone_key = re.sub(
-                            r"[^a-zA-Z0-9]+", "_",
-                            zone_names.get(zid, f"Zone_{zid}")
-                        ).strip("_")
-                        scheduled_min = int(zone.get("scheduledWateringTime", 0)) // 60
-                        computed_min = int(zone.get("computedWateringTime", 0)) // 60
-                        attrs[f"plannedDuration_{zone_key}"] = scheduled_min
-                        attrs[f"computedDuration_{zone_key}"] = computed_min
-                        total_planned += scheduled_min
-                        total_computed += computed_min
-                    attrs["plannedDuration_total"] = total_planned
-                    attrs["computedDuration_total"] = total_computed
-                    break
+            next_run = _next_run_with_time(prog)
+            last_run = prog.get("lastRun")
+            start_time = prog.get("startTime")
+            freq = prog.get("frequency")
+            if next_run:
+                attrs["next_run"] = next_run
+            if last_run:
+                attrs["last_run"] = last_run
+            if start_time:
+                attrs["start_time"] = start_time
+            if freq is not None:
+                attrs["frequency"] = _frequency_label(freq, self._get_lang())
+
+            total_duration = 0
+            for wt in prog.get("wateringTimes", []):
+                if not wt.get("active", False):
+                    continue
+                seconds = _zone_planned_seconds(wt, zone_properties)
+                zone_name = wt.get("name", f"Zone {wt['id']}")
+                attrs[f"zone_{zone_name}"] = seconds
+                total_duration += seconds
+
+            if total_duration > 0:
+                attrs["total_duration"] = total_duration
+            break
 
         return attrs
 

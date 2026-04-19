@@ -12,6 +12,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Local polling** — communicates directly with your RainMachine on your LAN
 - **Today's watering summary** — total irrigation duration with statistics support for long-term tracking
 - **Per-zone details** — scheduled vs actual duration, start time, and skip reason for each zone
+- **Planned zone durations** — each program switch exposes expected watering duration per active zone (weather-adaptive or fixed); each zone sensor exposes expected duration per program
 - **Zone and program control** — start/stop irrigation zones and programs, enable/disable them
 - **Rain delay control** — view current delay status and set new delays directly from Home Assistant
 - **Freeze protection** — enable/disable and set the freeze protection temperature threshold
@@ -102,9 +103,9 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 
 | Entity | Description |
 |--------|-------------|
-| `switch.<zone_name>` | Start/stop a zone manually (10 min default) — attributes: `last_run_start`, `last_run_end`, `next_run` (date + time, derived from the program that schedules the zone) |
+| `switch.<zone_name>` | Start/stop a zone manually (10 min default) — attributes: `last_run_start`, `last_run_end`, `next_run` |
 | `switch.<zone_name>_enabled` | Enable/disable a zone |
-| `switch.<program_name>` | Start/stop a program — attributes: `last_run`, `next_run` (date + time), `start_time` (HH:MM), `frequency` (translated: e.g. "Daily" / "Ogni giorno", "Mon, Wed" / "Lun, Mer", "Odd days" / "Giorni dispari") |
+| `switch.<program_name>` | Start/stop a program — attributes: `last_run`, `next_run`, `start_time`, `frequency`, `zone_<name>` (planned seconds per active zone), `total_duration` (total planned seconds) |
 | `switch.<program_name>_enabled` | Enable/disable a program |
 | `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
 | `switch.rainmachine_extra_water_on_hot_days` | Enable/disable extra watering on hot days |
@@ -137,10 +138,16 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 
 **Zone sensors** include:
 
-- `user_duration_min` / `user_duration_display` — scheduled duration
-- `real_duration_min` / `real_duration_display` — actual duration
-- `start_time` — scheduled start time
+- `userDuration` / `userDuration_display` — scheduled duration
+- `realDuration` / `realDuration_display` — actual duration
+- `startTime` — scheduled start time
 - `flag` — reason if watering was skipped (e.g., "Water surplus", "Stopped by rain sensor")
+- `program_<name>` — planned irrigation duration in seconds for each program that includes this zone (weather-adaptive: `referenceTime × userPercentage`; fixed: configured duration)
+
+**Program switches** include:
+
+- `zone_<name>` — planned duration in seconds for each active zone in the program
+- `total_duration` — total planned duration in seconds across all active zones
 
 **Forecast sensors** include:
 
@@ -161,7 +168,7 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 type: grid
 cards:
   - type: heading
-    heading: "🚿 Irrigation"
+    heading: "Irrigation"
     heading_style: title
     badges:
       - type: entity
@@ -215,7 +222,7 @@ cards:
 
 The integration polls your RainMachine's local API using two independent coordinators. All communication happens on your LAN — no cloud services are involved.
 
-- **Slow coordinator** (default every 5 min) — weather parsers, forecast, restrictions, rain delay, provision, firmware update
+- **Slow coordinator** (default every 5 min) — weather parsers, forecast, restrictions, rain delay, provision, firmware update, zone properties
 - **Fast coordinator** (default every 10 s) — zone list, program list, watering queue (used by run switches and run completion time sensors)
 
 **API endpoints used:**
@@ -229,6 +236,7 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/watering/queue` | Currently running zones/programs |
 | `/api/4/mixer` | Forecast conditions |
 | `/api/4/zone` | Zone list and status |
+| `/api/4/zone/properties` | Zone WaterSense properties (referenceTime for planned durations) |
 | `/api/4/program` | Program list and status |
 | `/api/4/restrictions/currently` | Active restrictions |
 | `/api/4/restrictions/global` | Global restriction settings |

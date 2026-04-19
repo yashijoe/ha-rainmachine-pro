@@ -62,7 +62,6 @@ async def async_setup_entry(
     # Parser sensors — build from stored dict; migrate old list format if needed
     parsers_config = entry.options.get(CONF_PARSERS, {})
     if isinstance(parsers_config, list):
-        # Migration: old format was a list of string keys — enable all known parsers
         parsers_config = {
             str(p["uid"]): {"description": p.get("description", ""), "enabled": True}
             for p in coordinator.data.get("parsers", [])
@@ -113,8 +112,6 @@ async def async_setup_entry(
         )
 
     async_add_entities(entities)
-
-
 
 
 class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
@@ -290,6 +287,28 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
                     return zone
         return None
 
+    def _get_program_durations(self) -> dict:
+        """Return planned duration in seconds per program for this zone."""
+        zone_properties = self.coordinator.data.get("zone_properties", {})
+        zprops = zone_properties.get(self._uid, {})
+        ref_time = zprops.get("waterSense", {}).get("referenceTime", 0)
+
+        durations = {}
+        for prog in self.coordinator.data.get("programs", []):
+            for wt in prog.get("wateringTimes", []):
+                if wt.get("id") == self._uid and wt.get("active", False):
+                    fixed_dur = wt.get("duration", 0)
+                    if fixed_dur > 0:
+                        seconds = fixed_dur
+                    elif ref_time > 0:
+                        seconds = int(ref_time * wt.get("userPercentage", 1.0))
+                    else:
+                        seconds = 0
+                    prog_name = prog.get("name", f"Program {prog['uid']}")
+                    durations[f"program_{prog_name}"] = seconds
+                    break
+        return durations
+
     @property
     def native_value(self):
         """Return state."""
@@ -305,8 +324,9 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
         lang = self._get_lang()
         flag_map = FLAG_MAP.get(lang, FLAG_MAP["en"])
         zone = self._get_zone_data()
+
         if not zone:
-            return {
+            attrs = {
                 "userDuration": 0,
                 "userDuration_unit": "min",
                 "realDuration": 0,
@@ -317,38 +337,42 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
                 "flag": flag_map.get(-1, "No watering"),
                 "icon": "mdi:sprinkler",
             }
-        cycle = zone.get("cycles", [{}])[0]
-        real_dur = int(cycle.get("realDuration", 0)) // 60
-        user_dur = int(cycle.get("userDuration", 0)) // 60
-        flag = zone.get("flag", -1)
-
-        if lang == "it":
-            user_label = "previsti"
-            real_label = "effettivi"
-        elif lang == "de":
-            user_label = "geplant"
-            real_label = "tatsächlich"
-        elif lang == "fr":
-            user_label = "prévus"
-            real_label = "effectifs"
-        elif lang == "es":
-            user_label = "previstos"
-            real_label = "efectivos"
         else:
-            user_label = "scheduled"
-            real_label = "actual"
+            cycle = zone.get("cycles", [{}])[0]
+            real_dur = int(cycle.get("realDuration", 0)) // 60
+            user_dur = int(cycle.get("userDuration", 0)) // 60
+            flag = zone.get("flag", -1)
 
-        return {
-            "userDuration": user_dur,
-            "userDuration_unit": "min",
-            "realDuration": real_dur,
-            "realDuration_unit": "min",
-            "userDuration_display": f"{user_dur} min {user_label}",
-            "realDuration_display": f"{real_dur} min {real_label}",
-            "startTime": cycle.get("startTime"),
-            "flag": flag_map.get(flag, flag_map.get(-1, "No watering")),
-            "icon": "mdi:sprinkler",
-        }
+            if lang == "it":
+                user_label = "previsti"
+                real_label = "effettivi"
+            elif lang == "de":
+                user_label = "geplant"
+                real_label = "tats\u00e4chlich"
+            elif lang == "fr":
+                user_label = "pr\u00e9vus"
+                real_label = "effectifs"
+            elif lang == "es":
+                user_label = "previstos"
+                real_label = "efectivos"
+            else:
+                user_label = "scheduled"
+                real_label = "actual"
+
+            attrs = {
+                "userDuration": user_dur,
+                "userDuration_unit": "min",
+                "realDuration": real_dur,
+                "realDuration_unit": "min",
+                "userDuration_display": f"{user_dur} min {user_label}",
+                "realDuration_display": f"{real_dur} min {real_label}",
+                "startTime": cycle.get("startTime"),
+                "flag": flag_map.get(flag, flag_map.get(-1, "No watering")),
+                "icon": "mdi:sprinkler",
+            }
+
+        attrs.update(self._get_program_durations())
+        return attrs
 
 
 class RainMachineParserSensor(RainMachineBaseEntity, SensorEntity):
@@ -454,17 +478,17 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
         lang = self._get_lang()
 
         day_names_map = {
-            "it": {0: "Lunedì", 1: "Martedì", 2: "Mercoledì", 3: "Giovedì", 4: "Venerdì", 5: "Sabato", 6: "Domenica"},
+            "it": {0: "Luned\u00ec", 1: "Marted\u00ec", 2: "Mercoled\u00ec", 3: "Gioved\u00ec", 4: "Venerd\u00ec", 5: "Sabato", 6: "Domenica"},
             "de": {0: "Montag", 1: "Dienstag", 2: "Mittwoch", 3: "Donnerstag", 4: "Freitag", 5: "Samstag", 6: "Sonntag"},
             "fr": {0: "Lundi", 1: "Mardi", 2: "Mercredi", 3: "Jeudi", 4: "Vendredi", 5: "Samedi", 6: "Dimanche"},
-            "es": {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"},
+            "es": {0: "Lunes", 1: "Martes", 2: "Mi\u00e9rcoles", 3: "Jueves", 4: "Viernes", 5: "S\u00e1bado", 6: "Domingo"},
             "en": {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"},
         }
         relative_map = {
             "it": {-1: "Ieri", 0: "Oggi", 1: "Domani"},
             "de": {-1: "Gestern", 0: "Heute", 1: "Morgen"},
             "fr": {-1: "Hier", 0: "Aujourd'hui", 1: "Demain"},
-            "es": {-1: "Ayer", 0: "Hoy", 1: "Mañana"},
+            "es": {-1: "Ayer", 0: "Hoy", 1: "Ma\u00f1ana"},
             "en": {-1: "Yesterday", 0: "Today", 1: "Tomorrow"},
         }
 
@@ -509,11 +533,10 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
         conditions_translated = WEATHER_CONDITIONS_TRANSLATED.get(lang, WEATHER_CONDITIONS_TRANSLATED["en"])
         state_translated = conditions_translated.get(condition, conditions_translated.get("unknown", "Unknown"))
 
-        # Translated labels for rain
         rain_labels = {
             "it": {"rain": "di pioggia", "forecast": "di pioggia prevista"},
             "de": {"rain": "Regen", "forecast": "Regen vorhergesagt"},
-            "fr": {"rain": "de pluie", "forecast": "de pluie prévue"},
+            "fr": {"rain": "de pluie", "forecast": "de pluie pr\u00e9vue"},
             "es": {"rain": "de lluvia", "forecast": "de lluvia prevista"},
             "en": {"rain": "rain", "forecast": "rain forecast"},
         }
@@ -521,14 +544,14 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
 
         return {
             "temperature": int(data.get("temperature", 0)),
-            "temperature_unit": "°C",
-            "temperature_display": f"{int(data.get('temperature', 0))}°",
+            "temperature_unit": "\u00b0C",
+            "temperature_display": f"{int(data.get('temperature', 0))}\u00b0",
             "min_temperature": int(data.get("minTemp", 0)),
-            "min_temperature_unit": "°C",
-            "min_temperature_display": f"{int(data.get('minTemp', 0))}° min",
+            "min_temperature_unit": "\u00b0C",
+            "min_temperature_display": f"{int(data.get('minTemp', 0))}\u00b0 min",
             "max_temperature": int(data.get("maxTemp", 0)),
-            "max_temperature_unit": "°C",
-            "max_temperature_display": f"{int(data.get('maxTemp', 0))}° max",
+            "max_temperature_unit": "\u00b0C",
+            "max_temperature_display": f"{int(data.get('maxTemp', 0))}\u00b0 max",
             "rain": data.get("rain", 0),
             "rain_unit": "mm",
             "rain_display": f"{data.get('rain', 0)} mm {labels['rain']}",
@@ -579,14 +602,12 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         """Return last_run and next_run attributes."""
         attrs = {}
-        # next_run: scheduled (not yet running) queue item for this zone
         for item in self.coordinator.data.get("queue", []):
             if item.get("zid") == self._uid and not item.get("running"):
                 val = item.get("startTime") or item.get("eta")
                 if val:
                     attrs["next_run"] = val
                 break
-        # last_run: from slow coordinator watering details
         try:
             details = self._slow_coordinator.data.get("details", {})
             for day in details.get("waterLog", {}).get("days", []):
