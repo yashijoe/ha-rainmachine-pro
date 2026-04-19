@@ -62,7 +62,6 @@ async def async_setup_entry(
     # Parser sensors — build from stored dict; migrate old list format if needed
     parsers_config = entry.options.get(CONF_PARSERS, {})
     if isinstance(parsers_config, list):
-        # Migration: old format was a list of string keys — enable all known parsers
         parsers_config = {
             str(p["uid"]): {"description": p.get("description", ""), "enabled": True}
             for p in coordinator.data.get("parsers", [])
@@ -291,19 +290,32 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
         return None
 
     def _get_zone_planned(self) -> dict:
-        """Sum scheduledWateringTime and computedWateringTime from dailystats/details."""
+        """Return per-program planned/computed durations (seconds) for this zone."""
         details = self.coordinator.data.get("dailystats_details", {})
         days = details.get("DailyStatsDetails", [])
+        prog_names = {
+            p["uid"]: p.get("name", f"Program {p['uid']}")
+            for p in self.coordinator.data.get("programs", [])
+        }
         if not days:
-            return {"scheduled": 0, "computed": 0}
-        scheduled = 0
-        computed = 0
+            return {"total_scheduled": 0, "total_computed": 0, "programs": []}
+        result = []
+        total_scheduled = 0
+        total_computed = 0
         for prog in days[0].get("simulatedPrograms", []):
+            pid = prog.get("id")
             for zone in prog.get("zones", []):
                 if zone.get("id") == self._uid:
-                    scheduled += int(zone.get("scheduledWateringTime", 0))
-                    computed += int(zone.get("computedWateringTime", 0))
-        return {"scheduled": scheduled, "computed": computed}
+                    scheduled = int(zone.get("scheduledWateringTime", 0))
+                    computed = int(zone.get("computedWateringTime", 0))
+                    total_scheduled += scheduled
+                    total_computed += computed
+                    result.append({
+                        "name": prog_names.get(pid, f"Program {pid}"),
+                        "scheduled": scheduled,
+                        "computed": computed,
+                    })
+        return {"total_scheduled": total_scheduled, "total_computed": total_computed, "programs": result}
 
     @property
     def native_value(self):
@@ -338,11 +350,11 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
             user_label = "scheduled"
             real_label = "actual"
 
-        planned_min = planned["scheduled"] // 60
-        computed_min = planned["computed"] // 60
+        planned_min = planned["total_scheduled"] // 60
+        computed_min = planned["total_computed"] // 60
 
         if not zone:
-            return {
+            attrs = {
                 "userDuration": 0,
                 "userDuration_unit": "min",
                 "realDuration": 0,
@@ -352,36 +364,35 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
                 "startTime": None,
                 "flag": flag_map.get(-1, "No watering"),
                 "icon": "mdi:sprinkler",
-                "plannedDuration": planned_min,
-                "plannedDuration_unit": "min",
-                "plannedDuration_display": f"{planned_min} min {user_label}",
-                "computedDuration": computed_min,
-                "computedDuration_unit": "min",
-                "computedDuration_display": f"{computed_min} min {real_label}",
+            }
+        else:
+            cycle = zone.get("cycles", [{}])[0]
+            real_dur = int(cycle.get("realDuration", 0)) // 60
+            user_dur = int(cycle.get("userDuration", 0)) // 60
+            flag = zone.get("flag", -1)
+            attrs = {
+                "userDuration": user_dur,
+                "userDuration_unit": "min",
+                "realDuration": real_dur,
+                "realDuration_unit": "min",
+                "userDuration_display": f"{user_dur} min {user_label}",
+                "realDuration_display": f"{real_dur} min {real_label}",
+                "startTime": cycle.get("startTime"),
+                "flag": flag_map.get(flag, flag_map.get(-1, "No watering")),
+                "icon": "mdi:sprinkler",
             }
 
-        cycle = zone.get("cycles", [{}])[0]
-        real_dur = int(cycle.get("realDuration", 0)) // 60
-        user_dur = int(cycle.get("userDuration", 0)) // 60
-        flag = zone.get("flag", -1)
+        attrs["plannedDuration_total"] = planned_min
+        attrs["plannedDuration_total_display"] = f"{planned_min} min {user_label}"
+        attrs["computedDuration_total"] = computed_min
+        attrs["computedDuration_total_display"] = f"{computed_min} min {real_label}"
 
-        return {
-            "userDuration": user_dur,
-            "userDuration_unit": "min",
-            "realDuration": real_dur,
-            "realDuration_unit": "min",
-            "userDuration_display": f"{user_dur} min {user_label}",
-            "realDuration_display": f"{real_dur} min {real_label}",
-            "startTime": cycle.get("startTime"),
-            "flag": flag_map.get(flag, flag_map.get(-1, "No watering")),
-            "icon": "mdi:sprinkler",
-            "plannedDuration": planned_min,
-            "plannedDuration_unit": "min",
-            "plannedDuration_display": f"{planned_min} min {user_label}",
-            "computedDuration": computed_min,
-            "computedDuration_unit": "min",
-            "computedDuration_display": f"{computed_min} min {real_label}",
-        }
+        for prog_data in planned["programs"]:
+            key = re.sub(r"[^a-zA-Z0-9]+", "_", prog_data["name"]).strip("_")
+            attrs[f"plannedDuration_{key}"] = prog_data["scheduled"] // 60
+            attrs[f"computedDuration_{key}"] = prog_data["computed"] // 60
+
+        return attrs
 
 
 class RainMachineParserSensor(RainMachineBaseEntity, SensorEntity):
@@ -542,7 +553,6 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
         conditions_translated = WEATHER_CONDITIONS_TRANSLATED.get(lang, WEATHER_CONDITIONS_TRANSLATED["en"])
         state_translated = conditions_translated.get(condition, conditions_translated.get("unknown", "Unknown"))
 
-        # Translated labels for rain
         rain_labels = {
             "it": {"rain": "di pioggia", "forecast": "di pioggia prevista"},
             "de": {"rain": "Regen", "forecast": "Regen vorhergesagt"},
@@ -612,14 +622,12 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         """Return last_run and next_run attributes."""
         attrs = {}
-        # next_run: scheduled (not yet running) queue item for this zone
         for item in self.coordinator.data.get("queue", []):
             if item.get("zid") == self._uid and not item.get("running"):
                 val = item.get("startTime") or item.get("eta")
                 if val:
                     attrs["next_run"] = val
                 break
-        # last_run: from slow coordinator watering details
         try:
             details = self._slow_coordinator.data.get("details", {})
             for day in details.get("waterLog", {}).get("days", []):

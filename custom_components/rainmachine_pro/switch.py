@@ -1,6 +1,7 @@
 """Switch platform for RainMachine Pro."""
 
 import logging
+import re
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -57,12 +58,7 @@ _FREQUENCY_LABELS = {
 
 
 def _next_run_with_time(prog: dict) -> str | None:
-    """Combine program nextRun date with startTime (minutes from midnight).
-
-    RainMachine returns nextRun as "YYYY-MM-DD" and startTime as an integer
-    (minutes from midnight, e.g. 360 = 06:00). Combines them into
-    "YYYY-MM-DD HH:MM". Falls back to date-only if startTime is missing.
-    """
+    """Combine program nextRun date with startTime (minutes from midnight)."""
     next_run = prog.get("nextRun")
     if not next_run:
         return None
@@ -80,16 +76,7 @@ def _next_run_with_time(prog: dict) -> str | None:
 
 
 def _frequency_label(freq: dict, lang: str = "en") -> str:
-    """Return a translated human-readable label for a program frequency.
-
-    RainMachine frequency encoding:
-      type 0, param 0        → Daily
-      type 1, param N        → Every N days
-      type 2, param <bits>   → Specific weekdays (10-char string "00SSFTWTM0",
-                               days encoded right-to-left: Mon=pos8 … Sun=pos2)
-      type 4, param 0        → Even days
-      type 4, param 1        → Odd days
-    """
+    """Return a translated human-readable label for a program frequency."""
     t = _FREQUENCY_LABELS.get(lang, _FREQUENCY_LABELS["en"])
     ftype = int(freq.get("type", 0))
     param = freq.get("param", "0")
@@ -104,9 +91,6 @@ def _frequency_label(freq: dict, lang: str = "en") -> str:
     if ftype == 4:
         return t["odd"] if str(param) == "1" else t["even"]
     if ftype == 2:
-        # param: 10-char string "00SSFTWTM0"
-        # positions (left→right): 0=pad,1=pad,2=Sun,3=Sat,4=Fri,5=Thu,6=Wed,7=Tue,8=Mon,9=pad
-        # day_order maps param index → index in _FREQUENCY_LABELS["days"] (Mon=0 … Sun=6)
         day_order = {8: 0, 7: 1, 6: 2, 5: 3, 4: 4, 3: 5, 2: 6}
         s = str(param)
         active_indices = sorted(
@@ -140,7 +124,7 @@ async def async_setup_entry(
         entities.append(RainMachineZoneRunSwitch(fast_coordinator, coordinator, entry, uid, name))
         entities.append(RainMachineZoneEnabledSwitch(coordinator, entry, uid, name))
 
-    # Program switches — filtered by enabled programs, run uses fast coordinator, enabled uses slow
+    # Program switches
     for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
         name = program.get("name", f"Program {pid}")
@@ -186,8 +170,6 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
         """Return last_run and next_run attributes."""
         attrs = {}
 
-        # next_run: check queue first (imminent run today), then fall back to
-        # earliest program that includes this zone (future scheduled run)
         next_run_found = False
         for item in self.coordinator.data.get("queue", []):
             if item.get("zid") == self._uid and not item.get("running"):
@@ -207,9 +189,8 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
                             candidates.append(nr)
                         break
             if candidates:
-                attrs["next_run"] = min(candidates)  # lexicographic min is correct for "YYYY-MM-DD HH:MM"
+                attrs["next_run"] = min(candidates)
 
-        # last_run: from slow coordinator watering details
         try:
             details = self._slow_coordinator.data.get("details", {})
             days = details.get("waterLog", {}).get("days", [])
@@ -315,8 +296,9 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return last_run, next_run, start_time and frequency from program data."""
+        """Return scheduling info and per-zone planned durations."""
         attrs = {}
+
         for prog in self._slow_coordinator.data.get("programs", []):
             if prog["uid"] == self._pid:
                 next_run = _next_run_with_time(prog)
@@ -332,6 +314,34 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
                 if freq is not None:
                     attrs["frequency"] = _frequency_label(freq, self._get_lang())
                 break
+
+        zone_names = {
+            z["uid"]: z.get("name", f"Zone {z['uid']}")
+            for z in self._slow_coordinator.data.get("zones", [])
+        }
+        details = self._slow_coordinator.data.get("dailystats_details", {})
+        days = details.get("DailyStatsDetails", [])
+        if days:
+            for prog in days[0].get("simulatedPrograms", []):
+                if prog.get("id") == self._pid:
+                    total_planned = 0
+                    total_computed = 0
+                    for zone in prog.get("zones", []):
+                        zid = zone.get("id")
+                        zone_key = re.sub(
+                            r"[^a-zA-Z0-9]+", "_",
+                            zone_names.get(zid, f"Zone_{zid}")
+                        ).strip("_")
+                        scheduled_min = int(zone.get("scheduledWateringTime", 0)) // 60
+                        computed_min = int(zone.get("computedWateringTime", 0)) // 60
+                        attrs[f"plannedDuration_{zone_key}"] = scheduled_min
+                        attrs[f"computedDuration_{zone_key}"] = computed_min
+                        total_planned += scheduled_min
+                        total_computed += computed_min
+                    attrs["plannedDuration_total"] = total_planned
+                    attrs["computedDuration_total"] = total_computed
+                    break
+
         return attrs
 
     async def async_turn_on(self, **kwargs) -> None:
