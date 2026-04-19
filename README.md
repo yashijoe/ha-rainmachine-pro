@@ -137,11 +137,9 @@ Zone and program names are defined by the user inside the RainMachine app and wi
 
 **Zone sensors** include:
 
-- `userDuration` / `userDuration_display` — scheduled duration (from watering log)
-- `realDuration` / `realDuration_display` — actual duration (from watering log)
-- `plannedDuration` / `plannedDuration_display` — base program duration as configured in the RainMachine app (from `dailystats/details`)
-- `computedDuration` / `computedDuration_display` — weather-adjusted duration the firmware plans to run (0 when suppressed by restrictions such as water surplus)
-- `startTime` — scheduled start time
+- `user_duration_min` / `user_duration_display` — scheduled duration
+- `real_duration_min` / `real_duration_display` — actual duration
+- `start_time` — scheduled start time
 - `flag` — reason if watering was skipped (e.g., "Water surplus", "Stopped by rain sensor")
 
 **Forecast sensors** include:
@@ -235,7 +233,6 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/restrictions/currently` | Active restrictions |
 | `/api/4/restrictions/global` | Global restriction settings |
 | `/api/4/restrictions/raindelay` | Rain delay status (GET/POST) |
-| `/api/4/dailystats/details` | Per-zone planned and weather-adjusted durations |
 | `/api/4/provision` | Device info and hardware version |
 | `/api/4/machine/update` | Firmware update status |
 
