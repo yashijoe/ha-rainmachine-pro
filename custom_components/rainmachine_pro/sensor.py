@@ -290,6 +290,21 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
                     return zone
         return None
 
+    def _get_zone_planned(self) -> dict:
+        """Sum scheduledWateringTime and computedWateringTime from dailystats/details."""
+        details = self.coordinator.data.get("dailystats_details", {})
+        days = details.get("DailyStatsDetails", [])
+        if not days:
+            return {"scheduled": 0, "computed": 0}
+        scheduled = 0
+        computed = 0
+        for prog in days[0].get("simulatedPrograms", []):
+            for zone in prog.get("zones", []):
+                if zone.get("id") == self._uid:
+                    scheduled += int(zone.get("scheduledWateringTime", 0))
+                    computed += int(zone.get("computedWateringTime", 0))
+        return {"scheduled": scheduled, "computed": computed}
+
     @property
     def native_value(self):
         """Return state."""
@@ -305,22 +320,7 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
         lang = self._get_lang()
         flag_map = FLAG_MAP.get(lang, FLAG_MAP["en"])
         zone = self._get_zone_data()
-        if not zone:
-            return {
-                "userDuration": 0,
-                "userDuration_unit": "min",
-                "realDuration": 0,
-                "realDuration_unit": "min",
-                "userDuration_display": "0 min previsti" if lang == "it" else "0 min scheduled",
-                "realDuration_display": "0 min effettivi" if lang == "it" else "0 min actual",
-                "startTime": None,
-                "flag": flag_map.get(-1, "No watering today"),
-                "icon": "mdi:sprinkler",
-            }
-        cycle = zone.get("cycles", [{}])[0]
-        real_dur = int(cycle.get("realDuration", 0)) // 60
-        user_dur = int(cycle.get("userDuration", 0)) // 60
-        flag = zone.get("flag", -1)
+        planned = self._get_zone_planned()
 
         if lang == "it":
             user_label = "previsti"
@@ -338,6 +338,33 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
             user_label = "scheduled"
             real_label = "actual"
 
+        planned_min = planned["scheduled"] // 60
+        computed_min = planned["computed"] // 60
+
+        if not zone:
+            return {
+                "userDuration": 0,
+                "userDuration_unit": "min",
+                "realDuration": 0,
+                "realDuration_unit": "min",
+                "userDuration_display": f"0 min {user_label}",
+                "realDuration_display": f"0 min {real_label}",
+                "startTime": None,
+                "flag": flag_map.get(-1, "No watering"),
+                "icon": "mdi:sprinkler",
+                "plannedDuration": planned_min,
+                "plannedDuration_unit": "min",
+                "plannedDuration_display": f"{planned_min} min {user_label}",
+                "computedDuration": computed_min,
+                "computedDuration_unit": "min",
+                "computedDuration_display": f"{computed_min} min {real_label}",
+            }
+
+        cycle = zone.get("cycles", [{}])[0]
+        real_dur = int(cycle.get("realDuration", 0)) // 60
+        user_dur = int(cycle.get("userDuration", 0)) // 60
+        flag = zone.get("flag", -1)
+
         return {
             "userDuration": user_dur,
             "userDuration_unit": "min",
@@ -346,8 +373,14 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
             "userDuration_display": f"{user_dur} min {user_label}",
             "realDuration_display": f"{real_dur} min {real_label}",
             "startTime": cycle.get("startTime"),
-            "flag": flag_map.get(flag, flag_map.get(-1, "No watering today")),
+            "flag": flag_map.get(flag, flag_map.get(-1, "No watering")),
             "icon": "mdi:sprinkler",
+            "plannedDuration": planned_min,
+            "plannedDuration_unit": "min",
+            "plannedDuration_display": f"{planned_min} min {user_label}",
+            "computedDuration": computed_min,
+            "computedDuration_unit": "min",
+            "computedDuration_display": f"{computed_min} min {real_label}",
         }
 
 

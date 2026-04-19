@@ -139,6 +139,9 @@ class RainMachineClient:
     async def get_restrictions_global(self, session: aiohttp.ClientSession) -> dict:
         return await self._get(session, "restrictions/global")
 
+    async def get_dailystats_details(self, session: aiohttp.ClientSession) -> dict:
+        return await self._get(session, "dailystats/details")
+
     async def get_watering_queue(self, session: aiohttp.ClientSession) -> list:
         data = await self._get(session, "watering/queue")
         return data.get("queue", [])
@@ -248,6 +251,7 @@ class RainMachineClient:
                 ("programs",                 self.get_programs(session)),
                 ("restrictions_currently",   self.get_restrictions_currently(session)),
                 ("restrictions_global",      self.get_restrictions_global(session)),
+                ("dailystats_details",       self.get_dailystats_details(session)),
                 ("queue",                    self.get_watering_queue(session)),
                 ("provision",                self.get_provision(session)),
                 ("machine_update",           self.get_machine_update(session)),
