@@ -32,10 +32,10 @@ _LOGGER = logging.getLogger(__name__)
 
 _DURATION_TYPE_LABELS = {
     "en": {"suggested": "suggested", "fixed": "fixed"},
-    "it": {"suggested": "suggerito", "fixed": "fisso"},
+    "it": {"suggested": "suggerita", "fixed": "fissa"},
     "de": {"suggested": "vorgeschlagen", "fixed": "fest"},
-    "fr": {"suggested": "sugg\u00e9r\u00e9", "fixed": "fixe"},
-    "es": {"suggested": "sugerido", "fixed": "fijo"},
+    "fr": {"suggested": "sugg\u00e9r\u00e9e", "fixed": "fixe"},
+    "es": {"suggested": "sugerida", "fixed": "fija"},
 }
 
 
