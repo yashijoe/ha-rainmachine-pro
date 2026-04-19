@@ -41,6 +41,40 @@ def _next_run_with_time(prog: dict) -> str | None:
         return next_run
 
 
+def _frequency_label(freq: dict) -> str:
+    """Return a human-readable label for a program frequency.
+
+    RainMachine frequency encoding:
+      type 0, param 0        → Daily
+      type 1, param N        → Every N days
+      type 2, param <bits>   → Specific weekdays (10-char string "00SSFTWTM0",
+                               days encoded right-to-left: Mon=pos8 … Sun=pos2)
+      type 4, param 0        → Even days
+      type 4, param 1        → Odd days
+    """
+    ftype = int(freq.get("type", 0))
+    param = freq.get("param", "0")
+
+    if ftype == 0:
+        return "Daily"
+    if ftype == 1:
+        try:
+            return f"Every {int(param)} days"
+        except (ValueError, TypeError):
+            return f"Every {param} days"
+    if ftype == 4:
+        return "Odd days" if str(param) == "1" else "Even days"
+    if ftype == 2:
+        # param: 10-char string "00SSFTWTM0"
+        # positions (left→right): 0=pad,1=pad,2=Sun,3=Sat,4=Fri,5=Thu,6=Wed,7=Tue,8=Mon,9=pad
+        day_map = {2: "Sun", 3: "Sat", 4: "Fri", 5: "Thu", 6: "Wed", 7: "Tue", 8: "Mon"}
+        s = str(param)
+        active = {day_map[i] for i, c in enumerate(s) if c == "1" and i in day_map}
+        order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        return ", ".join(d for d in order if d in active) or "Custom"
+    return f"type={ftype} param={param}"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -239,16 +273,22 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return last_run and next_run from program data."""
+        """Return last_run, next_run, start_time and frequency from program data."""
         attrs = {}
         for prog in self._slow_coordinator.data.get("programs", []):
             if prog["uid"] == self._pid:
                 next_run = _next_run_with_time(prog)
                 last_run = prog.get("lastRun")
+                start_time = prog.get("startTime")
+                freq = prog.get("frequency")
                 if next_run:
                     attrs["next_run"] = next_run
                 if last_run:
                     attrs["last_run"] = last_run
+                if start_time:
+                    attrs["start_time"] = start_time
+                if freq is not None:
+                    attrs["frequency"] = _frequency_label(freq)
                 break
         return attrs
 
