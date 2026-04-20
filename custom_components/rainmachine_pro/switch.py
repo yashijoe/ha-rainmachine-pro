@@ -55,11 +55,11 @@ _FREQUENCY_LABELS = {
 }
 
 _DURATION_TYPE_LABELS = {
-    "en": {"suggested": "suggested", "fixed": "fixed"},
-    "it": {"suggested": "suggerita", "fixed": "fissa"},
-    "de": {"suggested": "vorgeschlagen", "fixed": "fest"},
-    "fr": {"suggested": "sugg\u00e9r\u00e9e", "fixed": "fixe"},
-    "es": {"suggested": "sugerida", "fixed": "fija"},
+    "en": {"suggested": "adaptive", "fixed": "fixed"},
+    "it": {"suggested": "adattiva", "fixed": "fissa"},
+    "de": {"suggested": "adaptiv", "fixed": "fest"},
+    "fr": {"suggested": "adaptative", "fixed": "fixe"},
+    "es": {"suggested": "adaptativa", "fixed": "fija"},
 }
 
 

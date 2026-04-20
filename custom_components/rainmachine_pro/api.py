@@ -34,7 +34,6 @@ class RainMachineClient:
     """Client to interact with RainMachine local API."""
 
     def __init__(self, host: str, port: int, password: str, timeout: int = 20) -> None:
-        """Initialize the client."""
         self._host = host
         self._port = port
         self._password = password
@@ -46,7 +45,6 @@ class RainMachineClient:
         self._ssl_context.verify_mode = ssl.CERT_NONE
 
     def _url(self, path: str, query: str = "format") -> str:
-        """Build URL with token."""
         base = f"{self._base_url}/{path}"
         if query:
             base = f"{base}?{query}"
@@ -56,7 +54,6 @@ class RainMachineClient:
         return base
 
     async def authenticate(self, session: aiohttp.ClientSession) -> bool:
-        """Authenticate and get token."""
         url = f"{self._base_url}/auth/login"
         payload = json.dumps({"pwd": self._password, "remember": 1})
         headers = {"Content-Type": "application/json"}
@@ -78,7 +75,6 @@ class RainMachineClient:
             raise RainMachineConnectionError(f"Connection failed: {err}") from err
 
     async def _get(self, session: aiohttp.ClientSession, path: str, query: str = "format") -> dict:
-        """Make GET request."""
         url = self._url(path, query)
         try:
             async with session.get(
@@ -91,7 +87,6 @@ class RainMachineClient:
             raise RainMachineConnectionError(f"GET {path} failed: {err}") from err
 
     async def _post(self, session: aiohttp.ClientSession, path: str, payload: dict) -> dict:
-        """Make POST request."""
         url = self._url(path, query="")
         headers = {"Content-Type": "application/json"}
         try:
@@ -106,7 +101,7 @@ class RainMachineClient:
             raise RainMachineConnectionError(f"POST {path} failed: {err}") from err
 
     # -------------------------------------------------------------------------
-    # Data fetch methods (used by coordinator with shared session)
+    # Data fetch methods
     # -------------------------------------------------------------------------
 
     async def get_parsers(self, session: aiohttp.ClientSession) -> list:
@@ -155,11 +150,10 @@ class RainMachineClient:
         return {z["uid"]: z for z in data.get("zones", [])}
 
     # -------------------------------------------------------------------------
-    # Action methods (each opens its own session)
+    # Action methods
     # -------------------------------------------------------------------------
 
     async def _action(self, path: str, payload: dict) -> dict:
-        """Execute a POST action with its own authenticated session."""
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             return await self._post(session, path, payload)
@@ -168,7 +162,6 @@ class RainMachineClient:
         return await self._post(session, "restrictions/raindelay", {"rainDelay": days})
 
     async def action_start_zone(self, zid: int, duration: int = 600) -> dict:
-        """Start a zone for `duration` seconds (default 10 min)."""
         return await self._action(f"zone/{zid}/start", {"time": duration})
 
     async def action_stop_zone(self, zid: int) -> dict:
@@ -195,6 +188,26 @@ class RainMachineClient:
     async def action_start_update(self) -> dict:
         return await self._action("machine/update", {})
 
+    async def action_scale_program_durations(self, pid: int, multiplier: float, zone_properties: dict) -> dict:
+        """Scale all active zone durations in a program by multiplier (e.g. 1.05 = +5%)."""
+        async with aiohttp.ClientSession() as session:
+            await self.authenticate(session)
+            data = await self._get(session, f"program/{pid}")
+            watering_times = data.get("wateringTimes", [])
+            for wt in watering_times:
+                if not wt.get("active", False):
+                    continue
+                fixed_dur = wt.get("duration", 0)
+                if fixed_dur > 0:
+                    wt["duration"] = max(60, int(fixed_dur * multiplier))
+                else:
+                    zprops = zone_properties.get(wt["id"], {})
+                    ref_time = zprops.get("waterSense", {}).get("referenceTime", 0)
+                    if ref_time > 0:
+                        new_pct = max(0.05, min(5.0, wt.get("userPercentage", 1.0) * multiplier))
+                        wt["userPercentage"] = round(new_pct, 4)
+            return await self._post(session, f"program/{pid}", {"wateringTimes": watering_times})
+
     # -------------------------------------------------------------------------
     # Setup helpers
     # -------------------------------------------------------------------------
@@ -215,13 +228,11 @@ class RainMachineClient:
             return await self.get_programs(session)
 
     async def fetch_parsers(self) -> list:
-        """Fetch parser list for setup/options flow."""
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             return await self.get_parsers(session)
 
     async def fetch_fast_data(self) -> dict:
-        """Fetch only zones, programs and queue (for fast polling)."""
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             data = {}
@@ -238,11 +249,9 @@ class RainMachineClient:
             return data
 
     async def fetch_all_data(self) -> dict:
-        """Fetch all data in one authenticated session."""
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             data = {}
-
             for key, coro in [
                 ("parsers",                  self.get_parsers(session)),
                 ("watering",                 self.get_watering_today(session)),
@@ -263,5 +272,4 @@ class RainMachineClient:
                 except RainMachineApiError as err:
                     _LOGGER.warning("Failed to fetch %s: %s", key, err)
                     data[key] = {} if key not in ("parsers", "zones", "programs", "queue") else []
-
             return data

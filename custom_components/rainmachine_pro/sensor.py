@@ -31,11 +31,11 @@ from .entity import RainMachineBaseEntity
 _LOGGER = logging.getLogger(__name__)
 
 _DURATION_TYPE_LABELS = {
-    "en": {"suggested": "suggested", "fixed": "fixed"},
-    "it": {"suggested": "suggerita", "fixed": "fissa"},
-    "de": {"suggested": "vorgeschlagen", "fixed": "fest"},
-    "fr": {"suggested": "sugg\u00e9r\u00e9e", "fixed": "fixe"},
-    "es": {"suggested": "sugerida", "fixed": "fija"},
+    "en": {"suggested": "adaptive", "fixed": "fixed"},
+    "it": {"suggested": "adattiva", "fixed": "fissa"},
+    "de": {"suggested": "adaptiv", "fixed": "fest"},
+    "fr": {"suggested": "adaptative", "fixed": "fixe"},
+    "es": {"suggested": "adaptativa", "fixed": "fija"},
 }
 
 
@@ -274,7 +274,6 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
         return None
 
     def _get_program_durations(self) -> dict:
-        """Return planned duration and type per program for this zone."""
         lang = self._get_lang()
         type_labels = _DURATION_TYPE_LABELS.get(lang, _DURATION_TYPE_LABELS["en"])
         zone_properties = self.coordinator.data.get("zone_properties", {})
