@@ -192,7 +192,7 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
         if not next_run_found:
             candidates = []
-            for prog in self._slow_coordinator.data.get("programs", []):
+            for prog in self.coordinator.data.get("programs", []):
                 if not prog.get("active"):
                     continue
                 for pz in prog.get("zones", []):
@@ -311,7 +311,7 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
         zones_cfg = self._entry.options.get(CONF_ZONES, {})
         zone_properties = self._slow_coordinator.data.get("zone_properties", {})
 
-        for prog in self._slow_coordinator.data.get("programs", []):
+        for prog in self.coordinator.data.get("programs", []):
             if prog["uid"] != self._pid:
                 continue
 
