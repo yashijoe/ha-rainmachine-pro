@@ -13,6 +13,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Today's watering summary** — total irrigation duration with statistics support for long-term tracking
 - **Per-zone details** — scheduled vs actual duration, start time, and skip reason for each zone
 - **Planned zone durations** — each program switch exposes expected watering duration per active zone (weather-adaptive or fixed); each zone sensor exposes expected duration per program
+- **Program duration adjustment** — per-program +/− buttons scale all active zone durations by a configurable step (5–20%); works for both adaptive and fixed zones
 - **Zone and program control** — start/stop irrigation zones and programs, enable/disable them
 - **Rain delay control** — view current delay status and set new delays directly from Home Assistant
 - **Freeze protection** — enable/disable and set the freeze protection temperature threshold
@@ -107,18 +108,21 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | Entity | Description | Range |
 |--------|-------------|-------|
 | `number.rainmachine_rain_delay_days` | Set rain delay | 0–14 days |
-
-### Select
-
-| Entity | Description | Options |
-|--------|-------------|----------|
-| `select.rainmachine_freeze_protection_temperature` | Freeze protection threshold | −7 °C to +4 °C |
+| `number.<program_name>_adjustment_step` | Duration adjustment step for +/− buttons | 5–20% (step 5%) |
 
 ### Button
 
 | Entity | Description |
 |--------|-------------|
 | `button.rainmachine_reboot` | Reboot the RainMachine controller |
+| `button.<program_name>_increase_duration` | Increase all active zone durations by the adjustment step |
+| `button.<program_name>_decrease_duration` | Decrease all active zone durations by the adjustment step |
+
+### Select
+
+| Entity | Description | Options |
+|--------|-------------|----------|
+| `select.rainmachine_freeze_protection_temperature` | Freeze protection threshold | −7 °C to +4 °C |
 
 ### Update
 
@@ -135,7 +139,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `startTime` — scheduled start time
 - `flag` — reason if watering was skipped
 - `<program name>` — planned duration in seconds for each program that includes this zone
-- `<program name>_type` — `suggested` (weather-adaptive) or `fixed`, translated per HA language
+- `<program name>_type` — `adaptive` (weather-adaptive) or `fixed`, translated per HA language
 
 **Program switches** include:
 
@@ -144,7 +148,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `start_time` — scheduled start time (HH:MM)
 - `frequency` — translated frequency label (e.g. "Daily", "Ogni giorno")
 - `<zone name>` — planned duration in seconds for each active zone (integer, compatible with HA statistics)
-- `<zone name>_type` — `suggested` (weather-adaptive) or `fixed`, translated per HA language
+- `<zone name>_type` — `adaptive` (weather-adaptive) or `fixed`, translated per HA language
 - `total_duration` — total planned seconds across all active zones
 
 **Forecast sensors** include:
@@ -158,6 +162,21 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 
 - `days_remaining` / `hours_remaining` / `minutes_remaining` / `seconds_remaining`
 - `ends_at`
+
+## Program Duration Adjustment
+
+Each enabled program gets three entities for proportional duration control:
+
+1. **Adjustment step** (`number`) — select the increment/decrement percentage (5%, 10%, 15%, or 20%). Default: 10%.
+2. **Increase duration** (`button`) — multiplies every active zone's current duration by `(1 + step/100)`.
+3. **Decrease duration** (`button`) — multiplies every active zone's current duration by `(1 - step/100)`.
+
+For **adaptive zones**: scales `userPercentage` (clamped to 5%–500% of WaterSense reference).
+For **fixed zones**: scales the explicit `duration` value (minimum 60 seconds).
+
+Example — program with step set to 10%:
+- Zone A currently 1200 s → press Increase → 1320 s
+- Zone B currently 600 s → press Increase → 660 s
 
 ## How It Works
 
@@ -179,6 +198,7 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/zone` | Zone list and status |
 | `/api/4/zone/properties` | Zone WaterSense properties (referenceTime for planned durations) |
 | `/api/4/program` | Program list and status |
+| `/api/4/program/{id}` | Read/update program wateringTimes (duration adjustment) |
 | `/api/4/restrictions/currently` | Active restrictions |
 | `/api/4/restrictions/global` | Global restriction settings |
 | `/api/4/restrictions/raindelay` | Rain delay status (GET/POST) |
