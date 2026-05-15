@@ -10,7 +10,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 ## Features
 
 - **Local polling** — communicates directly with your RainMachine on your LAN
-- **Today's watering summary** — total irrigation duration with statistics support for long-term tracking
+- **Today's watering summary** — total irrigation duration (including manual/forced runs) with statistics support for long-term tracking
 - **Per-zone details** — scheduled vs actual duration, start time, and skip reason for each zone
 - **Planned zone durations** — each program switch exposes expected watering duration per active zone (weather-adaptive or fixed); each zone sensor exposes expected duration per program
 - **Program duration adjustment** — per-program +/− buttons scale all active zone durations by a configurable step (5–20%); works for both adaptive and fixed zones
@@ -71,7 +71,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 
 | Entity | Description | Unit | State Class |
 |--------|-------------|------|-------------|
-| `sensor.rainmachine_today_watering` | Total actual irrigation time today | min | `total` |
+| `sensor.rainmachine_today_watering` | Total actual irrigation time today (including manual runs) | min | `total` |
 | `sensor.rainmachine_today_watering_scheduled` | Total scheduled irrigation time today | min | `total` |
 | `sensor.rainmachine_rain_delay` | Current rain delay status | — | — |
 | `sensor.rainmachine_zone_<n>` | Per-zone watering details | min | `measurement` |
@@ -182,7 +182,7 @@ Example — program with step set to 10%:
 
 The integration polls your RainMachine's local API using two independent coordinators:
 
-- **Slow coordinator** (default every 5 min) — weather, forecast, restrictions, rain delay, provision, firmware, zone properties
+- **Slow coordinator** (default every 5 min) — weather, forecast, restrictions, rain delay, provision, firmware, zone properties, watering details
 - **Fast coordinator** (default every 10 s) — zone list, program list, watering queue
 
 **API endpoints used:**
@@ -191,8 +191,7 @@ The integration polls your RainMachine's local API using two independent coordin
 |----------|------|
 | `/api/4/auth/login` | Authentication |
 | `/api/4/parser` | Weather parser status |
-| `/api/4/watering/log` | Today's watering summary |
-| `/api/4/watering/log/details` | Per-zone watering details |
+| `/api/4/watering/log/details` | Today's watering summary (all runs including manual) and per-zone details |
 | `/api/4/watering/queue` | Currently running zones/programs |
 | `/api/4/mixer` | Forecast conditions |
 | `/api/4/zone` | Zone list and status |
