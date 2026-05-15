@@ -57,7 +57,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
    - **Zone/program update interval**: fast polling frequency in seconds (default: `10`, range: 5–60) — zone and program run state
    - **Timeout**: connection timeout in seconds (default: `20`, range: 5–120)
 4. Click **Submit**
-5. **Zone configuration** — enable/disable each zone and customize display names; only enabled zones create entities
+5. **Zone configuration** — enable/disable each zone and customize display names; only enabled zones create entities. If your controller has a master valve, it will appear here with its name from the RainMachine app (e.g. "Master Valve") and can be enabled/disabled independently.
 6. **Program configuration** — enable/disable each program and customize display names; only enabled programs create entities
 7. **Parser configuration** — select which weather parsers generate sensor entities
 
@@ -194,7 +194,7 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/watering/log/details` | Today's watering summary (all runs including manual) and per-zone details |
 | `/api/4/watering/queue` | Currently running zones/programs |
 | `/api/4/mixer` | Forecast conditions |
-| `/api/4/zone` | Zone list and status |
+| `/api/4/zone` | Zone list and status (includes master valve if present) |
 | `/api/4/zone/properties` | Zone WaterSense properties (referenceTime for planned durations) |
 | `/api/4/program` | Program list and status |
 | `/api/4/program/{id}` | Read/update program wateringTimes (duration adjustment) |
@@ -211,6 +211,8 @@ The integration polls your RainMachine's local API using two independent coordin
 **"Invalid password"** — Same password used in the RainMachine app.
 
 **Zone sensors show 0** — Normal if no watering occurred today.
+
+**Zone numbering differs from the RainMachine app** — Your controller likely has a master valve. It appears in the zone list under its own name (e.g. "Master Valve") and can be enabled or disabled in the integration configuration. The app hides it from the numbered zone list; this integration shows it explicitly.
 
 **Statistics graph shows "No statistics found"** — Statistics start collecting after installation; historical data is not available.
 
