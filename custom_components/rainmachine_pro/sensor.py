@@ -39,6 +39,21 @@ _DURATION_TYPE_LABELS = {
 }
 
 
+def _sum_details_today(data: dict, field: str) -> int:
+    """Sum a cycle field across all programs/zones/cycles for today."""
+    days = data.get("details", {}).get("waterLog", {}).get("days", [])
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    for day in days:
+        if day.get("date") == today_str:
+            total = 0
+            for prog in day.get("programs", []):
+                for zone in prog.get("zones", []):
+                    for cycle in zone.get("cycles", []):
+                        total += int(cycle.get(field, 0))
+            return total
+    return 0
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -135,26 +150,12 @@ class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
 
     @property
     def native_value(self):
-        watering = self.coordinator.data.get("watering", {})
-        days = watering.get("waterLog", {}).get("days", [])
-        if not days:
-            return 0
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        for day in days:
-            if day.get("date") == today_str:
-                return int(day.get("realDuration", 0)) // 60
-        return 0
+        return _sum_details_today(self.coordinator.data, "realDuration") // 60
 
     @property
     def extra_state_attributes(self):
-        watering = self.coordinator.data.get("watering", {})
-        days = watering.get("waterLog", {}).get("days", [])
         today_str = datetime.now().strftime("%Y-%m-%d")
-        user_duration = 0
-        for day in days:
-            if day.get("date") == today_str:
-                user_duration = int(day.get("userDuration", 0))
-                break
+        user_duration = _sum_details_today(self.coordinator.data, "userDuration")
         mins = user_duration // 60
         secs = user_duration % 60
         return {
@@ -183,15 +184,7 @@ class RainMachineTodayScheduledWateringSensor(RainMachineBaseEntity, SensorEntit
 
     @property
     def native_value(self):
-        watering = self.coordinator.data.get("watering", {})
-        days = watering.get("waterLog", {}).get("days", [])
-        if not days:
-            return 0
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        for day in days:
-            if day.get("date") == today_str:
-                return int(day.get("userDuration", 0)) // 60
-        return 0
+        return _sum_details_today(self.coordinator.data, "userDuration") // 60
 
 
 class RainMachineRainDelaySensor(RainMachineBaseEntity, SensorEntity):
@@ -339,9 +332,9 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
             if lang == "it":
                 user_label, real_label = "previsti", "effettivi"
             elif lang == "de":
-                user_label, real_label = "geplant", "tats\u00e4chlich"
+                user_label, real_label = "geplant", "tatsächlich"
             elif lang == "fr":
-                user_label, real_label = "pr\u00e9vus", "effectifs"
+                user_label, real_label = "prévus", "effectifs"
             elif lang == "es":
                 user_label, real_label = "previstos", "efectivos"
             else:
@@ -457,17 +450,17 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
     def _get_day_label(self, delta: int) -> str:
         lang = self._get_lang()
         day_names_map = {
-            "it": {0: "Luned\u00ec", 1: "Marted\u00ec", 2: "Mercoled\u00ec", 3: "Gioved\u00ec", 4: "Venerd\u00ec", 5: "Sabato", 6: "Domenica"},
+            "it": {0: "Lunedì", 1: "Martedì", 2: "Mercoledì", 3: "Giovedì", 4: "Venerdì", 5: "Sabato", 6: "Domenica"},
             "de": {0: "Montag", 1: "Dienstag", 2: "Mittwoch", 3: "Donnerstag", 4: "Freitag", 5: "Samstag", 6: "Sonntag"},
             "fr": {0: "Lundi", 1: "Mardi", 2: "Mercredi", 3: "Jeudi", 4: "Vendredi", 5: "Samedi", 6: "Dimanche"},
-            "es": {0: "Lunes", 1: "Martes", 2: "Mi\u00e9rcoles", 3: "Jueves", 4: "Viernes", 5: "S\u00e1bado", 6: "Domingo"},
+            "es": {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"},
             "en": {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"},
         }
         relative_map = {
             "it": {-1: "Ieri", 0: "Oggi", 1: "Domani"},
             "de": {-1: "Gestern", 0: "Heute", 1: "Morgen"},
             "fr": {-1: "Hier", 0: "Aujourd'hui", 1: "Demain"},
-            "es": {-1: "Ayer", 0: "Hoy", 1: "Ma\u00f1ana"},
+            "es": {-1: "Ayer", 0: "Hoy", 1: "Mañana"},
             "en": {-1: "Yesterday", 0: "Today", 1: "Tomorrow"},
         }
         relatives = relative_map.get(lang, relative_map["en"])
@@ -508,21 +501,21 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
         rain_labels = {
             "it": {"rain": "di pioggia", "forecast": "di pioggia prevista"},
             "de": {"rain": "Regen", "forecast": "Regen vorhergesagt"},
-            "fr": {"rain": "de pluie", "forecast": "de pluie pr\u00e9vue"},
+            "fr": {"rain": "de pluie", "forecast": "de pluie prévue"},
             "es": {"rain": "de lluvia", "forecast": "de lluvia prevista"},
             "en": {"rain": "rain", "forecast": "rain forecast"},
         }
         labels = rain_labels.get(lang, rain_labels["en"])
         return {
             "temperature": int(data.get("temperature", 0)),
-            "temperature_unit": "\u00b0C",
-            "temperature_display": f"{int(data.get('temperature', 0))}\u00b0",
+            "temperature_unit": "°C",
+            "temperature_display": f"{int(data.get('temperature', 0))}°",
             "min_temperature": int(data.get("minTemp", 0)),
-            "min_temperature_unit": "\u00b0C",
-            "min_temperature_display": f"{int(data.get('minTemp', 0))}\u00b0 min",
+            "min_temperature_unit": "°C",
+            "min_temperature_display": f"{int(data.get('minTemp', 0))}° min",
             "max_temperature": int(data.get("maxTemp", 0)),
-            "max_temperature_unit": "\u00b0C",
-            "max_temperature_display": f"{int(data.get('maxTemp', 0))}\u00b0 max",
+            "max_temperature_unit": "°C",
+            "max_temperature_display": f"{int(data.get('maxTemp', 0))}° max",
             "rain": data.get("rain", 0),
             "rain_unit": "mm",
             "rain_display": f"{data.get('rain', 0)} mm {labels['rain']}",
