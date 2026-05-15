@@ -133,8 +133,6 @@ async def async_setup_entry(
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
 
     for zone in fast_coordinator.data.get("zones", []):
-        if zone.get("master", False):
-            continue
         uid = zone["uid"]
         zone_cfg = zones_config.get(str(uid), {})
         if not zone_cfg.get("enabled", False):

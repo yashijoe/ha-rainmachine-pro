@@ -69,13 +69,7 @@ async def async_setup_entry(
     entities.append(RainMachineTodayScheduledWateringSensor(coordinator, entry))
     entities.append(RainMachineRainDelaySensor(coordinator, entry))
 
-    master_uids = {
-        str(z["uid"]) for z in coordinator.data.get("zones", []) if z.get("master", False)
-    }
-
     for uid_str, zone_data in zones.items():
-        if uid_str in master_uids:
-            continue
         if zone_data.get("enabled", False):
             entities.append(
                 RainMachineZoneSensor(
@@ -110,8 +104,6 @@ async def async_setup_entry(
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
 
     for zone in fast_coordinator.data.get("zones", []):
-        if zone.get("master", False):
-            continue
         uid = zone["uid"]
         zone_cfg = enabled_zones_cfg.get(str(uid), {})
         if not zone_cfg.get("enabled", False):
