@@ -115,6 +115,8 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             zones = {}
             for zone in self._available_zones:
+                if zone.get("master", False):
+                    continue
                 uid = str(zone["uid"])
                 rm_name = zone.get("name", f"Zone {uid}")
                 enabled = user_input.get(f"zone_{uid}_enabled", False)
@@ -129,6 +131,8 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema_dict = {}
         for zone in self._available_zones:
+            if zone.get("master", False):
+                continue
             uid = zone["uid"]
             rm_name = zone.get("name", f"Zone {uid}")
             active = zone.get("active", False)
@@ -138,7 +142,7 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="zones",
             data_schema=vol.Schema(schema_dict),
-            description_placeholders={"zone_count": str(len(self._available_zones))},
+            description_placeholders={"zone_count": str(len(schema_dict) // 2)},
         )
 
     async def async_step_programs(
@@ -315,6 +319,8 @@ class RainMachineProOptionsFlow(OptionsFlow):
                 client = RainMachineClient(host, port, password, timeout)
                 rm_zones = await client.fetch_zones()
                 for zone in rm_zones:
+                    if zone.get("master", False):
+                        continue
                     uid = str(zone["uid"])
                     current_zones[uid] = {
                         "name": zone.get("name", f"Zone {uid}"),

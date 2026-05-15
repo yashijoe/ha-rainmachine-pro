@@ -32,7 +32,7 @@ _FREQUENCY_LABELS = {
         "days": ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"],
     },
     "de": {
-        "daily": "T\u00e4glich",
+        "daily": "Täglich",
         "every_n": "Alle {n} Tage",
         "odd": "Ungerade Tage",
         "even": "Gerade Tage",
@@ -47,10 +47,10 @@ _FREQUENCY_LABELS = {
     },
     "es": {
         "daily": "Diario",
-        "every_n": "Cada {n} d\u00edas",
-        "odd": "D\u00edas impares",
-        "even": "D\u00edas pares",
-        "days": ["Lun", "Mar", "Mi\u00e9", "Jue", "Vie", "S\u00e1b", "Dom"],
+        "every_n": "Cada {n} días",
+        "odd": "Días impares",
+        "even": "Días pares",
+        "days": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
     },
 }
 
@@ -133,6 +133,8 @@ async def async_setup_entry(
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
 
     for zone in fast_coordinator.data.get("zones", []):
+        if zone.get("master", False):
+            continue
         uid = zone["uid"]
         zone_cfg = zones_config.get(str(uid), {})
         if not zone_cfg.get("enabled", False):
