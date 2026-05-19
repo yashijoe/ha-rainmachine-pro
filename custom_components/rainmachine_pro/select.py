@@ -19,15 +19,17 @@ _FREEZE_TEMPS = [str(t) for t in range(-7, 5)]
 # Internal keys — translated via entity.select.program_frequency.state in translations/
 _FREQ_OPTIONS = ["daily", "every_n_days", "odd_days", "even_days", "selected_days"]
 
-# Mon(0)–Sun(6) → position in 9-char bitmask string
-_DAY_POS = [8, 7, 6, 5, 4, 3, 2]
+# Bit values for Mon(0)..Sun(6) per API doc "SSFTWTM0" bitmask
+_DAY_BITS = [2, 4, 8, 16, 32, 64, 128]
 
 
-def _days_to_bitmask(days: list) -> str:
-    chars = ['0'] * 9
-    for i, active in enumerate(days):
-        chars[_DAY_POS[i]] = '1' if active else '0'
-    return ''.join(chars)
+def _param_to_days(param) -> list:
+    p = int(param)
+    return [(p & bit) != 0 for bit in _DAY_BITS]
+
+
+def _days_to_param(days: list) -> int:
+    return sum(bit for bit, active in zip(_DAY_BITS, days) if active)
 
 
 def _freq_type_to_option(freq: dict) -> str:
@@ -35,7 +37,7 @@ def _freq_type_to_option(freq: dict) -> str:
     if ftype == 1:
         return "every_n_days"
     if ftype == 4:
-        return "odd_days" if str(freq.get("param", "0")) == "1" else "even_days"
+        return "odd_days" if int(freq.get("param", 0)) == 1 else "even_days"
     if ftype == 2:
         return "selected_days"
     return "daily"
@@ -70,8 +72,7 @@ async def async_setup_entry(
                 except (ValueError, TypeError):
                     pass
             elif ftype == 2:
-                s = str(freq.get("param", "")).zfill(9)
-                freq_state["days"] = [s[pos] == '1' for pos in _DAY_POS]
+                freq_state["days"] = _param_to_days(freq.get("param", 0))
             hass.data[DOMAIN][freq_key] = freq_state
         else:
             freq_state = hass.data[DOMAIN][freq_key]
@@ -146,22 +147,22 @@ class RainMachineProgramFrequencySelect(RainMachineBaseEntity, SelectEntity):
         current_freq = prog.get("frequency", {}) if prog else {}
 
         if option == "daily":
-            freq = {"type": 0, "param": "0"}
+            freq = {"type": 0, "param": 0}
         elif option == "every_n_days":
             if int(current_freq.get("type", -1)) == 1:
-                param = current_freq.get("param", "2")
+                param = int(current_freq.get("param", 2))
             else:
-                param = str(self._freq_state["interval"])
-            freq = {"type": 1, "param": str(param)}
+                param = self._freq_state["interval"]
+            freq = {"type": 1, "param": param}
         elif option == "odd_days":
-            freq = {"type": 4, "param": "1"}
+            freq = {"type": 4, "param": 1}
         elif option == "even_days":
-            freq = {"type": 4, "param": "0"}
+            freq = {"type": 4, "param": 0}
         elif option == "selected_days":
             if int(current_freq.get("type", -1)) == 2:
-                param = current_freq.get("param", _days_to_bitmask([True] * 7))
+                param = int(current_freq.get("param", 0))
             else:
-                param = _days_to_bitmask(self._freq_state["days"])
+                param = _days_to_param(self._freq_state["days"])
             freq = {"type": 2, "param": param}
         else:
             return

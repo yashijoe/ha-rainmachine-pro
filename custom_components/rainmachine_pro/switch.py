@@ -62,21 +62,21 @@ _DURATION_TYPE_LABELS = {
     "es": {"suggested": "adaptativa", "fixed": "fija"},
 }
 
-# Mon(0)–Sun(6) → position in 9-char bitmask string
-_DAY_POS = [8, 7, 6, 5, 4, 3, 2]
+# Bit values for Mon(0)..Sun(6) per API doc "SSFTWTM0" bitmask
+# Mon=bit1=2, Tue=bit2=4, Wed=bit3=8, Thu=bit4=16, Fri=bit5=32, Sat=bit6=64, Sun=bit7=128
+_DAY_BITS = [2, 4, 8, 16, 32, 64, 128]
 _DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
-def _bitmask_to_days(param: str) -> list:
-    s = str(param).zfill(9)
-    return [s[pos] == '1' for pos in _DAY_POS]
+def _param_to_days(param) -> list:
+    """Convert API integer param to list of 7 bools [Mon..Sun]."""
+    p = int(param)
+    return [(p & bit) != 0 for bit in _DAY_BITS]
 
 
-def _days_to_bitmask(days: list) -> str:
-    chars = ['0'] * 9
-    for i, active in enumerate(days):
-        chars[_DAY_POS[i]] = '1' if active else '0'
-    return ''.join(chars)
+def _days_to_param(days: list) -> int:
+    """Convert list of 7 bools [Mon..Sun] to API integer param."""
+    return sum(bit for bit, active in zip(_DAY_BITS, days) if active)
 
 
 def _next_run_with_time(prog: dict) -> str | None:
@@ -101,7 +101,7 @@ def _frequency_label(freq: dict, lang: str = "en") -> str:
     """Return a translated human-readable label for a program frequency."""
     t = _FREQUENCY_LABELS.get(lang, _FREQUENCY_LABELS["en"])
     ftype = int(freq.get("type", 0))
-    param = freq.get("param", "0")
+    param = freq.get("param", 0)
     if ftype == 0:
         return t["daily"]
     if ftype == 1:
@@ -110,15 +110,12 @@ def _frequency_label(freq: dict, lang: str = "en") -> str:
         except (ValueError, TypeError):
             return t["every_n"].format(n=param)
     if ftype == 4:
-        return t["odd"] if str(param) == "1" else t["even"]
+        return t["odd"] if int(param) == 1 else t["even"]
     if ftype == 2:
-        day_order = {8: 0, 7: 1, 6: 2, 5: 3, 4: 4, 3: 5, 2: 6}
-        s = str(param)
-        active_indices = sorted(
-            (day_order[i] for i, c in enumerate(s) if c == "1" and i in day_order)
-        )
+        days = _param_to_days(param)
         day_names = t["days"]
-        return ", ".join(day_names[idx] for idx in active_indices) or "Custom"
+        active = [day_names[i] for i, on in enumerate(days) if on]
+        return ", ".join(active) or "Custom"
     return f"type={ftype} param={param}"
 
 
@@ -178,7 +175,7 @@ async def async_setup_entry(
                 except (ValueError, TypeError):
                     pass
             elif ftype == 2:
-                freq_state["days"] = _bitmask_to_days(freq.get("param", ""))
+                freq_state["days"] = _param_to_days(freq.get("param", 0))
             hass.data[DOMAIN][freq_key] = freq_state
         else:
             freq_state = hass.data[DOMAIN][freq_key]
@@ -466,17 +463,17 @@ class RainMachineProgramFrequencyDaySwitch(RainMachineBaseEntity, SwitchEntity):
     def is_on(self) -> bool:
         prog = self._get_program()
         if prog and int(prog.get("frequency", {}).get("type", -1)) == 2:
-            return _bitmask_to_days(prog["frequency"].get("param", "000000000"))[self._day_idx]
+            return _param_to_days(prog["frequency"].get("param", 0))[self._day_idx]
         return self._freq_state["days"][self._day_idx]
 
     async def async_turn_on(self, **kwargs) -> None:
         prog = self._get_program()
         if prog and int(prog.get("frequency", {}).get("type", -1)) == 2:
-            days = _bitmask_to_days(prog["frequency"].get("param", "000000000"))
+            days = _param_to_days(prog["frequency"].get("param", 0))
             days[self._day_idx] = True
             try:
                 await self.coordinator.client.action_set_program_frequency(
-                    self._pid, {"type": 2, "param": _days_to_bitmask(days)}
+                    self._pid, {"type": 2, "param": _days_to_param(days)}
                 )
                 await self.coordinator.async_request_refresh()
             except Exception as err:
@@ -488,11 +485,11 @@ class RainMachineProgramFrequencyDaySwitch(RainMachineBaseEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs) -> None:
         prog = self._get_program()
         if prog and int(prog.get("frequency", {}).get("type", -1)) == 2:
-            days = _bitmask_to_days(prog["frequency"].get("param", "000000000"))
+            days = _param_to_days(prog["frequency"].get("param", 0))
             days[self._day_idx] = False
             try:
                 await self.coordinator.client.action_set_program_frequency(
-                    self._pid, {"type": 2, "param": _days_to_bitmask(days)}
+                    self._pid, {"type": 2, "param": _days_to_param(days)}
                 )
                 await self.coordinator.async_request_refresh()
             except Exception as err:
