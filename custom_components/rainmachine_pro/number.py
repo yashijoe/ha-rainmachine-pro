@@ -14,13 +14,13 @@ from .coordinator import RainMachineProCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Bit values for Mon(0)..Sun(6) per API doc "SSFTWTM0" bitmask
-_DAY_BITS = [2, 4, 8, 16, 32, 64, 128]
+# Weekday param: 10-char binary string, positions 2-8 = Sun..Mon
+_DAY_POS = [8, 7, 6, 5, 4, 3, 2]
 
 
 def _param_to_days(param) -> list:
-    p = int(param)
-    return [(p & bit) != 0 for bit in _DAY_BITS]
+    s = str(param).zfill(10)
+    return [s[pos] == '1' for pos in _DAY_POS]
 
 
 async def async_setup_entry(
@@ -57,7 +57,7 @@ async def async_setup_entry(
                 except (ValueError, TypeError):
                     pass
             elif ftype == 2:
-                freq_state["days"] = _param_to_days(freq.get("param", 0))
+                freq_state["days"] = _param_to_days(freq.get("param", "0000000000"))
             hass.data[DOMAIN][freq_key] = freq_state
         else:
             freq_state = hass.data[DOMAIN][freq_key]
@@ -190,7 +190,7 @@ class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
         if prog and int(prog.get("frequency", {}).get("type", -1)) == 1:
             try:
                 await self.coordinator.client.action_set_program_frequency(
-                    self._pid, {"type": 1, "param": int(value)}
+                    self._pid, {"type": 1, "param": str(int(value))}
                 )
                 await self.coordinator.async_request_refresh()
             except Exception as err:

@@ -62,21 +62,24 @@ _DURATION_TYPE_LABELS = {
     "es": {"suggested": "adaptativa", "fixed": "fija"},
 }
 
-# Bit values for Mon(0)..Sun(6) per API doc "SSFTWTM0" bitmask
-# Mon=bit1=2, Tue=bit2=4, Wed=bit3=8, Thu=bit4=16, Fri=bit5=32, Sat=bit6=64, Sun=bit7=128
-_DAY_BITS = [2, 4, 8, 16, 32, 64, 128]
+# Weekday param is a 10-char binary string (e.g. "0010010010")
+# Positions: 2=Sun, 3=Sat, 4=Fri, 5=Thu, 6=Wed, 7=Tue, 8=Mon; 0,1,9 unused
+_DAY_POS = [8, 7, 6, 5, 4, 3, 2]  # Mon(0)..Sun(6) → string position
 _DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def _param_to_days(param) -> list:
-    """Convert API integer param to list of 7 bools [Mon..Sun]."""
-    p = int(param)
-    return [(p & bit) != 0 for bit in _DAY_BITS]
+    """Decode 10-char binary string param to list of 7 bools [Mon..Sun]."""
+    s = str(param).zfill(10)
+    return [s[pos] == '1' for pos in _DAY_POS]
 
 
-def _days_to_param(days: list) -> int:
-    """Convert list of 7 bools [Mon..Sun] to API integer param."""
-    return sum(bit for bit, active in zip(_DAY_BITS, days) if active)
+def _days_to_param(days: list) -> str:
+    """Encode list of 7 bools [Mon..Sun] to 10-char binary string param."""
+    chars = ['0'] * 10
+    for i, active in enumerate(days):
+        chars[_DAY_POS[i]] = '1' if active else '0'
+    return ''.join(chars)
 
 
 def _next_run_with_time(prog: dict) -> str | None:
@@ -101,7 +104,7 @@ def _frequency_label(freq: dict, lang: str = "en") -> str:
     """Return a translated human-readable label for a program frequency."""
     t = _FREQUENCY_LABELS.get(lang, _FREQUENCY_LABELS["en"])
     ftype = int(freq.get("type", 0))
-    param = freq.get("param", 0)
+    param = freq.get("param", "0")
     if ftype == 0:
         return t["daily"]
     if ftype == 1:
@@ -110,7 +113,7 @@ def _frequency_label(freq: dict, lang: str = "en") -> str:
         except (ValueError, TypeError):
             return t["every_n"].format(n=param)
     if ftype == 4:
-        return t["odd"] if int(param) == 1 else t["even"]
+        return t["odd"] if str(param) == "1" else t["even"]
     if ftype == 2:
         days = _param_to_days(param)
         day_names = t["days"]
@@ -175,7 +178,7 @@ async def async_setup_entry(
                 except (ValueError, TypeError):
                     pass
             elif ftype == 2:
-                freq_state["days"] = _param_to_days(freq.get("param", 0))
+                freq_state["days"] = _param_to_days(freq.get("param", "0000000000"))
             hass.data[DOMAIN][freq_key] = freq_state
         else:
             freq_state = hass.data[DOMAIN][freq_key]
@@ -463,13 +466,13 @@ class RainMachineProgramFrequencyDaySwitch(RainMachineBaseEntity, SwitchEntity):
     def is_on(self) -> bool:
         prog = self._get_program()
         if prog and int(prog.get("frequency", {}).get("type", -1)) == 2:
-            return _param_to_days(prog["frequency"].get("param", 0))[self._day_idx]
+            return _param_to_days(prog["frequency"].get("param", "0000000000"))[self._day_idx]
         return self._freq_state["days"][self._day_idx]
 
     async def async_turn_on(self, **kwargs) -> None:
         prog = self._get_program()
         if prog and int(prog.get("frequency", {}).get("type", -1)) == 2:
-            days = _param_to_days(prog["frequency"].get("param", 0))
+            days = _param_to_days(prog["frequency"].get("param", "0000000000"))
             days[self._day_idx] = True
             try:
                 await self.coordinator.client.action_set_program_frequency(
@@ -485,7 +488,7 @@ class RainMachineProgramFrequencyDaySwitch(RainMachineBaseEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs) -> None:
         prog = self._get_program()
         if prog and int(prog.get("frequency", {}).get("type", -1)) == 2:
-            days = _param_to_days(prog["frequency"].get("param", 0))
+            days = _param_to_days(prog["frequency"].get("param", "0000000000"))
             days[self._day_idx] = False
             try:
                 await self.coordinator.client.action_set_program_frequency(
