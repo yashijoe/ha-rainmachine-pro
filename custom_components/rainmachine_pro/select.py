@@ -8,14 +8,36 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_PROGRAMS
 from .coordinator import RainMachineProCoordinator
 from .entity import RainMachineBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
 
-# Supported freeze protection temperatures in °C
-_FREEZE_TEMPS = [str(t) for t in range(-7, 5)]  # -7 to 4 inclusive
+_FREEZE_TEMPS = [str(t) for t in range(-7, 5)]
+
+_FREQ_OPTIONS = ["Daily", "Every N days", "Odd days", "Even days", "Selected days"]
+
+# Mon(0)–Sun(6) → position in 9-char bitmask string
+_DAY_POS = [8, 7, 6, 5, 4, 3, 2]
+
+
+def _days_to_bitmask(days: list) -> str:
+    chars = ['0'] * 9
+    for i, active in enumerate(days):
+        chars[_DAY_POS[i]] = '1' if active else '0'
+    return ''.join(chars)
+
+
+def _freq_type_to_option(freq: dict) -> str:
+    ftype = int(freq.get("type", 0))
+    if ftype == 1:
+        return "Every N days"
+    if ftype == 4:
+        return "Odd days" if str(freq.get("param", "0")) == "1" else "Even days"
+    if ftype == 2:
+        return "Selected days"
+    return "Daily"
 
 
 async def async_setup_entry(
@@ -23,9 +45,41 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up select entities from a config entry."""
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([RainMachineFreezeProtectionTemp(coordinator, entry)])
+    fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
+    enabled_programs = entry.options.get(CONF_PROGRAMS, {})
+
+    entities = [RainMachineFreezeProtectionTemp(coordinator, entry)]
+
+    for program in fast_coordinator.data.get("programs", []):
+        pid = program["uid"]
+        prog_cfg = enabled_programs.get(str(pid), {})
+        if not prog_cfg.get("enabled", True):
+            continue
+        name = prog_cfg.get("name") or program.get("name", f"Program {pid}")
+
+        freq_key = f"{entry.entry_id}_prog_freq_{pid}"
+        if freq_key not in hass.data[DOMAIN]:
+            freq_state = {"interval": 2, "days": [True] * 7}
+            freq = program.get("frequency", {})
+            ftype = int(freq.get("type", 0))
+            if ftype == 1:
+                try:
+                    freq_state["interval"] = int(freq.get("param", 2))
+                except (ValueError, TypeError):
+                    pass
+            elif ftype == 2:
+                s = str(freq.get("param", "")).zfill(9)
+                freq_state["days"] = [s[pos] == '1' for pos in _DAY_POS]
+            hass.data[DOMAIN][freq_key] = freq_state
+        else:
+            freq_state = hass.data[DOMAIN][freq_key]
+
+        entities.append(
+            RainMachineProgramFrequencySelect(fast_coordinator, entry, pid, name, freq_state)
+        )
+
+    async_add_entities(entities)
 
 
 class RainMachineFreezeProtectionTemp(RainMachineBaseEntity, SelectEntity):
@@ -42,7 +96,6 @@ class RainMachineFreezeProtectionTemp(RainMachineBaseEntity, SelectEntity):
 
     @property
     def current_option(self) -> str | None:
-        """Return current freeze protection temperature."""
         temp = self.coordinator.data.get("restrictions_global", {}).get("freezeProtectTemp")
         if temp is None:
             return None
@@ -50,7 +103,6 @@ class RainMachineFreezeProtectionTemp(RainMachineBaseEntity, SelectEntity):
         return val if val in _FREEZE_TEMPS else None
 
     async def async_select_option(self, option: str) -> None:
-        """Set freeze protection temperature."""
         try:
             await self.coordinator.client.action_set_global_restriction(
                 {"freezeProtectTemp": int(option)}
@@ -58,3 +110,62 @@ class RainMachineFreezeProtectionTemp(RainMachineBaseEntity, SelectEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to set freeze protection temperature: %s", err)
+
+
+class RainMachineProgramFrequencySelect(RainMachineBaseEntity, SelectEntity):
+    """Select entity to choose irrigation frequency type for a program."""
+
+    _attr_icon = "mdi:calendar-sync"
+    _attr_options = _FREQ_OPTIONS
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str, freq_state: dict) -> None:
+        super().__init__(coordinator, entry)
+        self._pid = pid
+        self._freq_state = freq_state
+        self._attr_name = f"{program_name} frequency"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_frequency"
+
+    def _get_program(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog
+        return None
+
+    @property
+    def current_option(self) -> str | None:
+        prog = self._get_program()
+        if not prog:
+            return None
+        return _freq_type_to_option(prog.get("frequency", {}))
+
+    async def async_select_option(self, option: str) -> None:
+        prog = self._get_program()
+        current_freq = prog.get("frequency", {}) if prog else {}
+
+        if option == "Daily":
+            freq = {"type": 0, "param": "0"}
+        elif option == "Every N days":
+            if int(current_freq.get("type", -1)) == 1:
+                param = current_freq.get("param", "2")
+            else:
+                param = str(self._freq_state["interval"])
+            freq = {"type": 1, "param": str(param)}
+        elif option == "Odd days":
+            freq = {"type": 4, "param": "1"}
+        elif option == "Even days":
+            freq = {"type": 4, "param": "0"}
+        elif option == "Selected days":
+            if int(current_freq.get("type", -1)) == 2:
+                param = current_freq.get("param", _days_to_bitmask([True] * 7))
+            else:
+                param = _days_to_bitmask(self._freq_state["days"])
+            freq = {"type": 2, "param": param}
+        else:
+            return
+
+        try:
+            await self.coordinator.client.action_set_program_frequency(self._pid, freq)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to set frequency for program %s: %s", self._pid, err)

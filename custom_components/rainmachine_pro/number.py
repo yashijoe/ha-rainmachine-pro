@@ -14,13 +14,20 @@ from .coordinator import RainMachineProCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+# Mon(0)–Sun(6) → position in 9-char bitmask string
+_DAY_POS = [8, 7, 6, 5, 4, 3, 2]
+
+
+def _bitmask_to_days(param: str) -> list:
+    s = str(param).zfill(9)
+    return [s[pos] == '1' for pos in _DAY_POS]
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up number entities from a config entry."""
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
@@ -33,10 +40,31 @@ async def async_setup_entry(
         if not prog_cfg.get("enabled", True):
             continue
         name = prog_cfg.get("name") or program.get("name", f"Program {pid}")
+
         step_key = f"{entry.entry_id}_prog_step_{pid}"
         hass.data[DOMAIN].setdefault(step_key, {"value": 10})
         step_state = hass.data[DOMAIN][step_key]
         entities.append(RainMachineProgramAdjustStep(coordinator, entry, pid, name, step_state))
+
+        freq_key = f"{entry.entry_id}_prog_freq_{pid}"
+        if freq_key not in hass.data[DOMAIN]:
+            freq_state = {"interval": 2, "days": [True] * 7}
+            freq = program.get("frequency", {})
+            ftype = int(freq.get("type", 0))
+            if ftype == 1:
+                try:
+                    freq_state["interval"] = int(freq.get("param", 2))
+                except (ValueError, TypeError):
+                    pass
+            elif ftype == 2:
+                freq_state["days"] = _bitmask_to_days(freq.get("param", ""))
+            hass.data[DOMAIN][freq_key] = freq_state
+        else:
+            freq_state = hass.data[DOMAIN][freq_key]
+
+        entities.append(
+            RainMachineProgramFrequencyInterval(fast_coordinator, entry, pid, name, freq_state)
+        )
 
     async_add_entities(entities)
 
@@ -112,3 +140,58 @@ class RainMachineProgramAdjustStep(CoordinatorEntity, NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         self._step_state["value"] = int(value)
         self.async_write_ha_state()
+
+
+class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
+    """Number entity for the interval (days) when frequency is 'Every N days'."""
+
+    _attr_native_min_value = 1
+    _attr_native_max_value = 14
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "days"
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:calendar-range"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str, freq_state: dict) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._pid = pid
+        self._freq_state = freq_state
+        self._attr_name = f"{program_name} frequency interval"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_frequency_interval"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    def _get_program(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog
+        return None
+
+    @property
+    def native_value(self) -> float:
+        prog = self._get_program()
+        if prog:
+            freq = prog.get("frequency", {})
+            if int(freq.get("type", -1)) == 1:
+                try:
+                    return float(int(freq.get("param", 2)))
+                except (ValueError, TypeError):
+                    pass
+        return float(self._freq_state["interval"])
+
+    async def async_set_native_value(self, value: float) -> None:
+        self._freq_state["interval"] = int(value)
+        self.async_write_ha_state()
+        prog = self._get_program()
+        if prog and int(prog.get("frequency", {}).get("type", -1)) == 1:
+            try:
+                await self.coordinator.client.action_set_program_frequency(
+                    self._pid, {"type": 1, "param": str(int(value))}
+                )
+                await self.coordinator.async_request_refresh()
+            except Exception as err:
+                _LOGGER.error("Failed to set frequency interval for program %s: %s", self._pid, err)

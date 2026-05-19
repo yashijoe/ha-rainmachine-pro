@@ -62,6 +62,22 @@ _DURATION_TYPE_LABELS = {
     "es": {"suggested": "adaptativa", "fixed": "fija"},
 }
 
+# Mon(0)–Sun(6) → position in 9-char bitmask string
+_DAY_POS = [8, 7, 6, 5, 4, 3, 2]
+_DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def _bitmask_to_days(param: str) -> list:
+    s = str(param).zfill(9)
+    return [s[pos] == '1' for pos in _DAY_POS]
+
+
+def _days_to_bitmask(days: list) -> str:
+    chars = ['0'] * 9
+    for i, active in enumerate(days):
+        chars[_DAY_POS[i]] = '1' if active else '0'
+    return ''.join(chars)
+
 
 def _next_run_with_time(prog: dict) -> str | None:
     """Combine program nextRun date with startTime."""
@@ -145,9 +161,34 @@ async def async_setup_entry(
         pid = program["uid"]
         name = program.get("name", f"Program {pid}")
         prog_cfg = enabled_programs.get(str(pid), {})
-        if prog_cfg.get("enabled", True):
-            entities.append(RainMachineProgramRunSwitch(fast_coordinator, coordinator, entry, pid, name))
-            entities.append(RainMachineProgramEnabledSwitch(coordinator, entry, pid, name))
+        if not prog_cfg.get("enabled", True):
+            continue
+
+        entities.append(RainMachineProgramRunSwitch(fast_coordinator, coordinator, entry, pid, name))
+        entities.append(RainMachineProgramEnabledSwitch(coordinator, entry, pid, name))
+
+        freq_key = f"{entry.entry_id}_prog_freq_{pid}"
+        if freq_key not in hass.data[DOMAIN]:
+            freq_state = {"interval": 2, "days": [True] * 7}
+            freq = program.get("frequency", {})
+            ftype = int(freq.get("type", 0))
+            if ftype == 1:
+                try:
+                    freq_state["interval"] = int(freq.get("param", 2))
+                except (ValueError, TypeError):
+                    pass
+            elif ftype == 2:
+                freq_state["days"] = _bitmask_to_days(freq.get("param", ""))
+            hass.data[DOMAIN][freq_key] = freq_state
+        else:
+            freq_state = hass.data[DOMAIN][freq_key]
+
+        for day_idx in range(7):
+            entities.append(
+                RainMachineProgramFrequencyDaySwitch(
+                    fast_coordinator, entry, pid, name, day_idx, freq_state
+                )
+            )
 
     entities.append(RainMachineFreezeProtectionSwitch(coordinator, entry))
     entities.append(RainMachineExtraWaterSwitch(coordinator, entry))
@@ -396,6 +437,69 @@ class RainMachineProgramEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to disable program %s: %s", self._pid, err)
+
+
+class RainMachineProgramFrequencyDaySwitch(RainMachineBaseEntity, SwitchEntity):
+    """Switch to toggle a specific weekday for a program's 'Selected days' schedule."""
+
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_icon = "mdi:calendar-today"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self, coordinator, entry, pid: int, program_name: str, day_idx: int, freq_state: dict
+    ) -> None:
+        super().__init__(coordinator, entry)
+        self._pid = pid
+        self._day_idx = day_idx
+        self._freq_state = freq_state
+        self._attr_name = f"{program_name} frequency {_DAY_NAMES[day_idx]}"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_frequency_day_{day_idx}"
+
+    def _get_program(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog
+        return None
+
+    @property
+    def is_on(self) -> bool:
+        prog = self._get_program()
+        if prog and int(prog.get("frequency", {}).get("type", -1)) == 2:
+            return _bitmask_to_days(prog["frequency"].get("param", "000000000"))[self._day_idx]
+        return self._freq_state["days"][self._day_idx]
+
+    async def async_turn_on(self, **kwargs) -> None:
+        prog = self._get_program()
+        if prog and int(prog.get("frequency", {}).get("type", -1)) == 2:
+            days = _bitmask_to_days(prog["frequency"].get("param", "000000000"))
+            days[self._day_idx] = True
+            try:
+                await self.coordinator.client.action_set_program_frequency(
+                    self._pid, {"type": 2, "param": _days_to_bitmask(days)}
+                )
+                await self.coordinator.async_request_refresh()
+            except Exception as err:
+                _LOGGER.error("Failed to set frequency day for program %s: %s", self._pid, err)
+        else:
+            self._freq_state["days"][self._day_idx] = True
+            self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        prog = self._get_program()
+        if prog and int(prog.get("frequency", {}).get("type", -1)) == 2:
+            days = _bitmask_to_days(prog["frequency"].get("param", "000000000"))
+            days[self._day_idx] = False
+            try:
+                await self.coordinator.client.action_set_program_frequency(
+                    self._pid, {"type": 2, "param": _days_to_bitmask(days)}
+                )
+                await self.coordinator.async_request_refresh()
+            except Exception as err:
+                _LOGGER.error("Failed to set frequency day for program %s: %s", self._pid, err)
+        else:
+            self._freq_state["days"][self._day_idx] = False
+            self.async_write_ha_state()
 
 
 # ---------------------------------------------------------------------------

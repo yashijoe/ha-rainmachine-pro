@@ -187,6 +187,14 @@ class RainMachineClient:
             data["startTime"] = start_time
             return await self._post(session, f"program/{pid}", data)
 
+    async def action_set_program_frequency(self, pid: int, freq: dict) -> dict:
+        """GET full program, update frequency, POST back."""
+        async with aiohttp.ClientSession() as session:
+            await self.authenticate(session)
+            data = await self._get(session, f"program/{pid}")
+            data["frequency"] = freq
+            return await self._post(session, f"program/{pid}", data)
+
     async def action_set_global_restriction(self, payload: dict) -> dict:
         return await self._action("restrictions/global", payload)
 
