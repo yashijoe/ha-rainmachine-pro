@@ -14,6 +14,8 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Per-zone details** — scheduled vs actual duration, start time, and skip reason for each zone
 - **Planned zone durations** — each program switch exposes expected watering duration per active zone (weather-adaptive or fixed); each zone sensor exposes expected duration per program
 - **Program duration adjustment** — per-program +/− buttons scale all active zone durations by a configurable step (5–20%); works for both adaptive and fixed zones
+- **Editable program start time** — set each program's scheduled start time directly from Home Assistant
+- **Editable program frequency** — set each program's irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
 - **Zone and program control** — start/stop irrigation zones and programs, enable/disable them
 - **Rain delay control** — view current delay status and set new delays directly from Home Assistant
 - **Freeze protection** — enable/disable and set the freeze protection temperature threshold
@@ -100,6 +102,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `switch.<zone_name>_enabled` | Enable/disable a zone |
 | `switch.<program_name>` | Start/stop a program — see attributes below |
 | `switch.<program_name>_enabled` | Enable/disable a program |
+| `switch.<program_name>_frequency_Mon` … `switch.<program_name>_frequency_Sun` | Weekday toggles for "Selected days" frequency (7 switches per program, config category) |
 | `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
 | `switch.rainmachine_extra_water_on_hot_days` | Enable/disable extra watering on hot days |
 
@@ -109,6 +112,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 |--------|-------------|-------|
 | `number.rainmachine_rain_delay_days` | Set rain delay | 0–14 days |
 | `number.<program_name>_adjustment_step` | Duration adjustment step for +/− buttons | 5–20% (step 5%) |
+| `number.<program_name>_frequency_interval` | Days between runs when frequency is "Every N days" | 1–14 days |
 
 ### Button
 
@@ -121,8 +125,15 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 ### Select
 
 | Entity | Description | Options |
-|--------|-------------|----------|
+|--------|-------------|---------|
 | `select.rainmachine_freeze_protection_temperature` | Freeze protection threshold | −7 °C to +4 °C |
+| `select.<program_name>_frequency` | Irrigation frequency type | Daily / Every N days / Odd days / Even days / Selected days |
+
+### Time
+
+| Entity | Description |
+|--------|-------------|
+| `time.<program_name>_start_time` | Scheduled start time for the program (editable) |
 
 ### Update
 
@@ -174,9 +185,22 @@ Each enabled program gets three entities for proportional duration control:
 For **adaptive zones**: scales `userPercentage` (clamped to 5%–500% of WaterSense reference).
 For **fixed zones**: scales the explicit `duration` value (minimum 60 seconds).
 
-Example — program with step set to 10%:
-- Zone A currently 1200 s → press Increase → 1320 s
-- Zone B currently 600 s → press Increase → 660 s
+## Program Frequency Editing
+
+Each enabled program exposes three types of entities for schedule editing (all `EntityCategory.CONFIG`, hidden from the main dashboard by default):
+
+1. **`select.<program>_frequency`** — choose the frequency type:
+   - `Daily` — runs every day
+   - `Every N days` — runs every N days (set N via the interval number entity)
+   - `Odd days` — runs on odd-numbered calendar days
+   - `Even days` — runs on even-numbered calendar days
+   - `Selected days` — runs on specific weekdays (toggle each day individually)
+
+2. **`number.<program>_frequency_interval`** — the interval N (1–14 days) used when type is *Every N days*. Changing this value immediately updates the device if the program is already set to *Every N days*; otherwise the value is stored and applied next time you switch to that type.
+
+3. **`switch.<program>_frequency_Mon` … `switch.<program>_frequency_Sun`** — one toggle per weekday. Toggling a day immediately updates the device if the program is already set to *Selected days*; otherwise the state is stored as a pending value.
+
+Only one frequency type is active at a time. Switching type via the select entity preserves previously configured parameters where possible (e.g. switching back to *Every N days* restores the last used interval).
 
 ## How It Works
 
@@ -197,7 +221,7 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/zone` | Zone list and status (includes master valve if present) |
 | `/api/4/zone/properties` | Zone WaterSense properties (referenceTime for planned durations) |
 | `/api/4/program` | Program list and status |
-| `/api/4/program/{id}` | Read/update program wateringTimes (duration adjustment) |
+| `/api/4/program/{id}` | Read/update program (start time, frequency, duration adjustment) |
 | `/api/4/restrictions/currently` | Active restrictions |
 | `/api/4/restrictions/global` | Global restriction settings |
 | `/api/4/restrictions/raindelay` | Rain delay status (GET/POST) |
