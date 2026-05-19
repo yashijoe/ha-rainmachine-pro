@@ -60,5 +60,18 @@
         "description": "Sélectionnez les parseurs météo à exposer comme entités dans Home Assistant."
       }
     }
+  },
+  "entity": {
+    "select": {
+      "program_frequency": {
+        "state": {
+          "daily": "Quotidien",
+          "every_n_days": "Tous les N jours",
+          "odd_days": "Jours impairs",
+          "even_days": "Jours pairs",
+          "selected_days": "Jours sélectionnés"
+        }
+      }
+    }
   }
 }

@@ -60,5 +60,18 @@
         "description": "Wählen Sie, welche Wetter-Parser als Entitäten in Home Assistant angezeigt werden sollen."
       }
     }
+  },
+  "entity": {
+    "select": {
+      "program_frequency": {
+        "state": {
+          "daily": "Täglich",
+          "every_n_days": "Alle N Tage",
+          "odd_days": "Ungerade Tage",
+          "even_days": "Gerade Tage",
+          "selected_days": "Ausgewählte Tage"
+        }
+      }
+    }
   }
 }

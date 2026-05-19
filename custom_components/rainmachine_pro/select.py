@@ -16,7 +16,8 @@ _LOGGER = logging.getLogger(__name__)
 
 _FREEZE_TEMPS = [str(t) for t in range(-7, 5)]
 
-_FREQ_OPTIONS = ["Daily", "Every N days", "Odd days", "Even days", "Selected days"]
+# Internal keys — translated via entity.select.program_frequency.state in translations/
+_FREQ_OPTIONS = ["daily", "every_n_days", "odd_days", "even_days", "selected_days"]
 
 # Mon(0)–Sun(6) → position in 9-char bitmask string
 _DAY_POS = [8, 7, 6, 5, 4, 3, 2]
@@ -32,12 +33,12 @@ def _days_to_bitmask(days: list) -> str:
 def _freq_type_to_option(freq: dict) -> str:
     ftype = int(freq.get("type", 0))
     if ftype == 1:
-        return "Every N days"
+        return "every_n_days"
     if ftype == 4:
-        return "Odd days" if str(freq.get("param", "0")) == "1" else "Even days"
+        return "odd_days" if str(freq.get("param", "0")) == "1" else "even_days"
     if ftype == 2:
-        return "Selected days"
-    return "Daily"
+        return "selected_days"
+    return "daily"
 
 
 async def async_setup_entry(
@@ -117,6 +118,7 @@ class RainMachineProgramFrequencySelect(RainMachineBaseEntity, SelectEntity):
 
     _attr_icon = "mdi:calendar-sync"
     _attr_options = _FREQ_OPTIONS
+    _attr_translation_key = "program_frequency"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator, entry, pid: int, program_name: str, freq_state: dict) -> None:
@@ -143,19 +145,19 @@ class RainMachineProgramFrequencySelect(RainMachineBaseEntity, SelectEntity):
         prog = self._get_program()
         current_freq = prog.get("frequency", {}) if prog else {}
 
-        if option == "Daily":
+        if option == "daily":
             freq = {"type": 0, "param": "0"}
-        elif option == "Every N days":
+        elif option == "every_n_days":
             if int(current_freq.get("type", -1)) == 1:
                 param = current_freq.get("param", "2")
             else:
                 param = str(self._freq_state["interval"])
             freq = {"type": 1, "param": str(param)}
-        elif option == "Odd days":
+        elif option == "odd_days":
             freq = {"type": 4, "param": "1"}
-        elif option == "Even days":
+        elif option == "even_days":
             freq = {"type": 4, "param": "0"}
-        elif option == "Selected days":
+        elif option == "selected_days":
             if int(current_freq.get("type", -1)) == 2:
                 param = current_freq.get("param", _days_to_bitmask([True] * 7))
             else:
