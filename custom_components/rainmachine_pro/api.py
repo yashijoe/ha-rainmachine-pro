@@ -179,6 +179,9 @@ class RainMachineClient:
     async def action_set_program_active(self, pid: int, active: bool) -> dict:
         return await self._action(f"program/{pid}", {"active": active})
 
+    async def action_set_program_start_time(self, pid: int, minutes: int) -> dict:
+        return await self._action(f"program/{pid}", {"startTime": minutes})
+
     async def action_set_global_restriction(self, payload: dict) -> dict:
         return await self._action("restrictions/global", payload)
 
