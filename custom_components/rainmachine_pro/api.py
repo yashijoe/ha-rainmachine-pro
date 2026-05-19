@@ -179,12 +179,12 @@ class RainMachineClient:
     async def action_set_program_active(self, pid: int, active: bool) -> dict:
         return await self._action(f"program/{pid}", {"active": active})
 
-    async def action_set_program_start_time(self, pid: int, minutes: int) -> dict:
-        """GET full program, update startTime, POST back."""
+    async def action_set_program_start_time(self, pid: int, start_time: str) -> dict:
+        """GET full program, update startTime (HH:MM string), POST back."""
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
-            data["startTime"] = minutes
+            data["startTime"] = start_time
             return await self._post(session, f"program/{pid}", data)
 
     async def action_set_global_restriction(self, payload: dict) -> dict:

@@ -56,16 +56,16 @@ class RainMachineProgramStartTime(RainMachineBaseEntity, TimeEntity):
         if not prog:
             return None
         start_time = prog.get("startTime")
-        if start_time is None:
+        if not start_time:
             return None
         try:
-            minutes = int(start_time)
-            h, m = divmod(minutes, 60)
-            return dt_time(h, m)
+            # API returns "HH:MM" string
+            h, m = str(start_time).split(":")
+            return dt_time(int(h), int(m))
         except (ValueError, TypeError):
             return None
 
     async def async_set_value(self, value: dt_time) -> None:
-        minutes = value.hour * 60 + value.minute
-        await self.coordinator.client.action_set_program_start_time(self._pid, minutes)
+        time_str = value.strftime("%H:%M")
+        await self.coordinator.client.action_set_program_start_time(self._pid, time_str)
         await self.coordinator.async_request_refresh()
