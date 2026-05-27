@@ -166,8 +166,27 @@ async def async_setup_entry(
 
         entities.append(RainMachineProgramRunSwitch(fast_coordinator, coordinator, entry, pid, name))
         entities.append(RainMachineProgramEnabledSwitch(coordinator, entry, pid, name))
-        entities.append(RainMachineProgramAdaptiveSwitch(fast_coordinator, coordinator, entry, pid, name))
 
+        # --- adaptive_state: {zone_id: fixed_duration_seconds} ---
+        # Pre-populated if program currently uses fixed durations.
+        # Updated on turn_on (save) / used on turn_off (restore).
+        adaptive_key = f"{entry.entry_id}_prog_adaptive_{pid}"
+        if adaptive_key not in hass.data[DOMAIN]:
+            adaptive_state: dict[int, int] = {}
+            for wt in program.get("wateringTimes", []):
+                if wt.get("active", False) and wt.get("duration", 0) > 0:
+                    adaptive_state[wt["id"]] = wt["duration"]
+            hass.data[DOMAIN][adaptive_key] = adaptive_state
+        else:
+            adaptive_state = hass.data[DOMAIN][adaptive_key]
+
+        entities.append(
+            RainMachineProgramAdaptiveSwitch(
+                fast_coordinator, coordinator, entry, pid, name, adaptive_state
+            )
+        )
+
+        # --- freq_state ---
         freq_key = f"{entry.entry_id}_prog_freq_{pid}"
         if freq_key not in hass.data[DOMAIN]:
             freq_state = {"interval": 2, "days": [True] * 7}
@@ -444,7 +463,10 @@ class RainMachineProgramAdaptiveSwitch(RainMachineBaseEntity, SwitchEntity):
     """Switch to toggle adaptive watering duration for a program.
 
     ON  → all active zones set to duration=0 (device uses smart ET-based calc).
-    OFF → all active zones set to duration=waterSense.referenceTime (fixed minutes).
+          Before calling the API, current fixed durations are saved to adaptive_state
+          so they can be restored when turning back OFF.
+    OFF → restores saved durations from adaptive_state (priority 1),
+          falls back to waterSense.referenceTime (priority 2), then 600 s (priority 3).
     """
 
     _attr_device_class = SwitchDeviceClass.SWITCH
@@ -452,11 +474,18 @@ class RainMachineProgramAdaptiveSwitch(RainMachineBaseEntity, SwitchEntity):
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
-        self, coordinator, slow_coordinator, entry, pid: int, program_name: str
+        self,
+        coordinator,
+        slow_coordinator,
+        entry,
+        pid: int,
+        program_name: str,
+        adaptive_state: dict,
     ) -> None:
         super().__init__(coordinator, entry)
         self._pid = pid
         self._slow_coordinator = slow_coordinator
+        self._adaptive_state = adaptive_state  # {zone_id: duration_seconds}
         self._attr_name = f"{program_name} adaptive watering"
         self._attr_unique_id = f"{entry.entry_id}_program_{pid}_adaptive"
 
@@ -477,17 +506,26 @@ class RainMachineProgramAdaptiveSwitch(RainMachineBaseEntity, SwitchEntity):
         return all(wt.get("duration", 0) == 0 for wt in active_zones)
 
     async def async_turn_on(self, **kwargs) -> None:
+        """Save current fixed durations, then set all zones to adaptive (duration=0)."""
+        prog = self._get_program()
+        if prog:
+            for wt in prog.get("wateringTimes", []):
+                if wt.get("active", False) and wt.get("duration", 0) > 0:
+                    self._adaptive_state[wt["id"]] = wt["duration"]
         try:
-            await self.coordinator.client.action_set_program_adaptive(self._pid, True, {})
+            await self.coordinator.client.action_set_program_adaptive(
+                self._pid, True, {}, self._adaptive_state
+            )
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to enable adaptive watering for program %s: %s", self._pid, err)
 
     async def async_turn_off(self, **kwargs) -> None:
+        """Restore saved fixed durations (or referenceTime fallback)."""
         try:
             zone_properties = self._slow_coordinator.data.get("zone_properties", {})
             await self.coordinator.client.action_set_program_adaptive(
-                self._pid, False, zone_properties
+                self._pid, False, zone_properties, self._adaptive_state
             )
             await self.coordinator.async_request_refresh()
         except Exception as err:
