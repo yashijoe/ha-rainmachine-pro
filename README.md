@@ -16,6 +16,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Program duration adjustment** — per-program +/− buttons scale all active zone durations by a configurable step (5–20%); works for both adaptive and fixed zones
 - **Editable program start time** — set each program's scheduled start time directly from Home Assistant
 - **Editable program frequency** — set each program's irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
+- **Adaptive watering toggle** — enable or disable smart ET-based (weather-adaptive) watering per program; switching back to fixed automatically restores the previous fixed duration
 - **Zone and program control** — start/stop irrigation zones and programs, enable/disable them
 - **Rain delay control** — view current delay status and set new delays directly from Home Assistant
 - **Freeze protection** — enable/disable and set the freeze protection temperature threshold
@@ -102,6 +103,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `switch.<zone_name>_enabled` | Enable/disable a zone |
 | `switch.<program_name>` | Start/stop a program — see attributes below |
 | `switch.<program_name>_enabled` | Enable/disable a program |
+| `switch.<program_name>_adaptive_watering` | Toggle adaptive (smart ET) vs fixed duration for all active zones in the program (config category) |
 | `switch.<program_name>_frequency_Mon` … `switch.<program_name>_frequency_Sun` | Weekday toggles for "Selected days" frequency (7 switches per program, config category) |
 | `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
 | `switch.rainmachine_extra_water_on_hot_days` | Enable/disable extra watering on hot days |
@@ -185,6 +187,18 @@ Each enabled program gets three entities for proportional duration control:
 For **adaptive zones**: scales `userPercentage` (clamped to 5%–500% of WaterSense reference).
 For **fixed zones**: scales the explicit `duration` value (minimum 60 seconds).
 
+## Adaptive Watering Toggle
+
+Each enabled program exposes a **`switch.<program>_adaptive_watering`** entity (config category):
+
+- **ON** — all active zones in the program are set to `duration=0`, enabling the RainMachine's smart ET-based calculation (watering time adapts to weather and evapotranspiration data).
+- **OFF** — all active zones are restored to fixed durations, in this priority order:
+  1. The duration that was in use before turning adaptive ON (saved automatically).
+  2. The zone's `waterSense.referenceTime` (the device's current ET-based reference value).
+  3. 600 seconds (10 minutes) as a last fallback.
+
+`is_on` reads `True` only when **all** active zones in the program currently have `duration=0`.
+
 ## Program Frequency Editing
 
 Each enabled program exposes three types of entities for schedule editing (all `EntityCategory.CONFIG`, hidden from the main dashboard by default):
@@ -221,7 +235,7 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/zone` | Zone list and status (includes master valve if present) |
 | `/api/4/zone/properties` | Zone WaterSense properties (referenceTime for planned durations) |
 | `/api/4/program` | Program list and status |
-| `/api/4/program/{id}` | Read/update program (start time, frequency, duration adjustment) |
+| `/api/4/program/{id}` | Read/update program (start time, frequency, duration adjustment, adaptive toggle) |
 | `/api/4/restrictions/currently` | Active restrictions |
 | `/api/4/restrictions/global` | Global restriction settings |
 | `/api/4/restrictions/raindelay` | Rain delay status (GET/POST) |
