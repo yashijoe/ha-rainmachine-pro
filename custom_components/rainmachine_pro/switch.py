@@ -166,6 +166,7 @@ async def async_setup_entry(
 
         entities.append(RainMachineProgramRunSwitch(fast_coordinator, coordinator, entry, pid, name))
         entities.append(RainMachineProgramEnabledSwitch(coordinator, entry, pid, name))
+        entities.append(RainMachineProgramAdaptiveSwitch(fast_coordinator, coordinator, entry, pid, name))
 
         freq_key = f"{entry.entry_id}_prog_freq_{pid}"
         if freq_key not in hass.data[DOMAIN]:
@@ -437,6 +438,60 @@ class RainMachineProgramEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to disable program %s: %s", self._pid, err)
+
+
+class RainMachineProgramAdaptiveSwitch(RainMachineBaseEntity, SwitchEntity):
+    """Switch to toggle adaptive watering duration for a program.
+
+    ON  → all active zones set to duration=0 (device uses smart ET-based calc).
+    OFF → all active zones set to duration=waterSense.referenceTime (fixed minutes).
+    """
+
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_icon = "mdi:water-sync"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self, coordinator, slow_coordinator, entry, pid: int, program_name: str
+    ) -> None:
+        super().__init__(coordinator, entry)
+        self._pid = pid
+        self._slow_coordinator = slow_coordinator
+        self._attr_name = f"{program_name} adaptive watering"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_adaptive"
+
+    def _get_program(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog
+        return None
+
+    @property
+    def is_on(self) -> bool:
+        prog = self._get_program()
+        if not prog:
+            return False
+        active_zones = [wt for wt in prog.get("wateringTimes", []) if wt.get("active", False)]
+        if not active_zones:
+            return False
+        return all(wt.get("duration", 0) == 0 for wt in active_zones)
+
+    async def async_turn_on(self, **kwargs) -> None:
+        try:
+            await self.coordinator.client.action_set_program_adaptive(self._pid, True, {})
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to enable adaptive watering for program %s: %s", self._pid, err)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        try:
+            zone_properties = self._slow_coordinator.data.get("zone_properties", {})
+            await self.coordinator.client.action_set_program_adaptive(
+                self._pid, False, zone_properties
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to disable adaptive watering for program %s: %s", self._pid, err)
 
 
 class RainMachineProgramFrequencyDaySwitch(RainMachineBaseEntity, SwitchEntity):
