@@ -429,7 +429,7 @@ class RainMachineProgramEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-tml        for program in self.coordinator.data.get("programs", []):
+        for program in self.coordinator.data.get("programs", []):
             if program["uid"] == self._pid:
                 return program.get("active", False)
         return False
