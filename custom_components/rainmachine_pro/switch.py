@@ -190,6 +190,9 @@ async def async_setup_entry(
                 )
             )
 
+        entities.append(RainMachineProgramWeatherAdaptiveSwitch(fast_coordinator, entry, pid, name))
+        entities.append(RainMachineProgramAdaptiveFrequencySwitch(fast_coordinator, entry, pid, name))
+
     entities.append(RainMachineFreezeProtectionSwitch(coordinator, entry))
     entities.append(RainMachineExtraWaterSwitch(coordinator, entry))
 
@@ -500,6 +503,76 @@ class RainMachineProgramFrequencyDaySwitch(RainMachineBaseEntity, SwitchEntity):
         else:
             self._freq_state["days"][self._day_idx] = False
             self.async_write_ha_state()
+
+
+class RainMachineProgramWeatherAdaptiveSwitch(RainMachineBaseEntity, SwitchEntity):
+    """Switch to enable/disable weather-adaptive watering for a program."""
+
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_icon = "mdi:weather-cloudy"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
+        super().__init__(coordinator, entry)
+        self._pid = pid
+        self._attr_name = f"{program_name} weather adaptive watering"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_weather_adaptive"
+
+    @property
+    def is_on(self) -> bool:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return not prog.get("ignoreInternetWeather", False)
+        return False
+
+    async def async_turn_on(self, **kwargs) -> None:
+        try:
+            await self.coordinator.client.action_set_program_ignore_weather(self._pid, False)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to enable weather adaptive watering for program %s: %s", self._pid, err)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        try:
+            await self.coordinator.client.action_set_program_ignore_weather(self._pid, True)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to disable weather adaptive watering for program %s: %s", self._pid, err)
+
+
+class RainMachineProgramAdaptiveFrequencySwitch(RainMachineBaseEntity, SwitchEntity):
+    """Switch to enable/disable adaptive watering frequency for a program."""
+
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_icon = "mdi:chart-timeline-variant"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
+        super().__init__(coordinator, entry)
+        self._pid = pid
+        self._attr_name = f"{program_name} use adaptive frequency"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_adaptive_frequency"
+
+    @property
+    def is_on(self) -> bool:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog.get("freq_modified", 0) > 0
+        return False
+
+    async def async_turn_on(self, **kwargs) -> None:
+        try:
+            await self.coordinator.client.action_set_program_freq_modified(self._pid, 50)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to enable adaptive frequency for program %s: %s", self._pid, err)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        try:
+            await self.coordinator.client.action_set_program_freq_modified(self._pid, 0)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to disable adaptive frequency for program %s: %s", self._pid, err)
 
 
 # ---------------------------------------------------------------------------

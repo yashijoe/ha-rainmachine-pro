@@ -179,6 +179,12 @@ class RainMachineClient:
     async def action_set_program_active(self, pid: int, active: bool) -> dict:
         return await self._action(f"program/{pid}", {"active": active})
 
+    async def action_set_program_ignore_weather(self, pid: int, ignore: bool) -> dict:
+        return await self._action(f"program/{pid}", {"ignoreInternetWeather": ignore})
+
+    async def action_set_program_freq_modified(self, pid: int, value: int) -> dict:
+        return await self._action(f"program/{pid}", {"freq_modified": value})
+
     async def action_set_program_start_time(self, pid: int, start_time: str) -> dict:
         """GET full program, update startTime (HH:MM string), POST back."""
         async with aiohttp.ClientSession() as session:

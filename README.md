@@ -16,6 +16,8 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Program duration adjustment** — per-program +/− buttons scale all active zone durations by a configurable step (5–20%); works for both adaptive and fixed zones
 - **Editable program start time** — set each program's scheduled start time directly from Home Assistant
 - **Editable program frequency** — set each program's irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
+- **Weather adaptive watering** — per-program switch to enable/disable the use of internet weather data for adaptive watering
+- **Adaptive frequency** — per-program switch to enable/disable adaptive watering frequency adjustment
 - **Zone and program control** — start/stop irrigation zones and programs, enable/disable them
 - **Rain delay control** — view current delay status and set new delays directly from Home Assistant
 - **Freeze protection** — enable/disable and set the freeze protection temperature threshold
@@ -103,6 +105,8 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `switch.<program_name>` | Start/stop a program — see attributes below |
 | `switch.<program_name>_enabled` | Enable/disable a program |
 | `switch.<program_name>_frequency_Mon` … `switch.<program_name>_frequency_Sun` | Weekday toggles for "Selected days" frequency (7 switches per program, config category) |
+| `switch.<program_name>_weather_adaptive_watering` | Enable/disable weather-adaptive watering per program (ON = uses internet weather data, OFF = ignores internet weather) |
+| `switch.<program_name>_use_adaptive_frequency` | Enable/disable adaptive watering frequency per program (ON = 50% adaptive adjustment, OFF = 0%) |
 | `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
 | `switch.rainmachine_extra_water_on_hot_days` | Enable/disable extra watering on hot days |
 
@@ -125,7 +129,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 ### Select
 
 | Entity | Description | Options |
-|--------|-------------|---------|
+|--------|-------------|--------|
 | `select.rainmachine_freeze_protection_temperature` | Freeze protection threshold | −7 °C to +4 °C |
 | `select.<program_name>_frequency` | Irrigation frequency type | Daily / Every N days / Odd days / Even days / Selected days |
 
@@ -202,6 +206,24 @@ Each enabled program exposes three types of entities for schedule editing (all `
 
 Only one frequency type is active at a time. Switching type via the select entity preserves previously configured parameters where possible (e.g. switching back to *Every N days* restores the last used interval).
 
+## Weather Adaptive Watering
+
+Each enabled program exposes a `switch.<program>_weather_adaptive_watering` entity (config category):
+
+- **ON** — the program uses internet weather data to adjust watering (sets `ignoreInternetWeather = false`)
+- **OFF** — the program ignores internet weather and waters with fixed durations (sets `ignoreInternetWeather = true`)
+
+This maps directly to the "ignore Internet Weather" checkbox in the RainMachine app.
+
+## Adaptive Frequency
+
+Each enabled program exposes a `switch.<program>_use_adaptive_frequency` entity (config category):
+
+- **ON** — adaptive frequency adjustment is enabled at 50% (sets `freq_modified = 50`)
+- **OFF** — adaptive frequency adjustment is disabled (sets `freq_modified = 0`)
+
+This maps directly to the "adaptive frequency percentage" field in the RainMachine app.
+
 ## How It Works
 
 The integration polls your RainMachine's local API using two independent coordinators:
@@ -221,7 +243,7 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/zone` | Zone list and status (includes master valve if present) |
 | `/api/4/zone/properties` | Zone WaterSense properties (referenceTime for planned durations) |
 | `/api/4/program` | Program list and status |
-| `/api/4/program/{id}` | Read/update program (start time, frequency, duration adjustment) |
+| `/api/4/program/{id}` | Read/update program (start time, frequency, duration adjustment, weather adaptive, adaptive frequency) |
 | `/api/4/restrictions/currently` | Active restrictions |
 | `/api/4/restrictions/global` | Global restriction settings |
 | `/api/4/restrictions/raindelay` | Rain delay status (GET/POST) |
