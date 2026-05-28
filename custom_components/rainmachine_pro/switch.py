@@ -55,11 +55,11 @@ _FREQUENCY_LABELS = {
 }
 
 _DURATION_TYPE_LABELS = {
-    "en": {"suggested": "adaptive", "fixed": "fixed"},
-    "it": {"suggested": "adattiva", "fixed": "fissa"},
-    "de": {"suggested": "adaptiv", "fixed": "fest"},
-    "fr": {"suggested": "adaptative", "fixed": "fixe"},
-    "es": {"suggested": "adaptativa", "fixed": "fija"},
+    "en": {"suggested": "suggested", "custom": "custom", "not_set": "not set"},
+    "it": {"suggested": "suggerita", "custom": "personalizzata", "not_set": "non impostata"},
+    "de": {"suggested": "vorgeschlagen", "custom": "benutzerdefiniert", "not_set": "nicht gesetzt"},
+    "fr": {"suggested": "suggérée", "custom": "personnalisée", "not_set": "non définie"},
+    "es": {"suggested": "sugerida", "custom": "personalizada", "not_set": "no definida"},
 }
 
 # Weekday param is a 10-char binary string (e.g. "0010010010")
@@ -381,7 +381,14 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
                 zid = wt["id"]
                 ha_name = zones_cfg.get(str(zid), {}).get("name") or wt.get("name", f"Zone {zid}")
                 seconds = _zone_planned_seconds(wt, zone_properties)
-                duration_type = "fixed" if wt.get("duration", 0) > 0 else "suggested"
+                fixed_dur = wt.get("duration", 0)
+                ref_time = zone_properties.get(zid, {}).get("waterSense", {}).get("referenceTime", 0)
+                if fixed_dur > 0:
+                    duration_type = "custom"
+                elif ref_time > 0:
+                    duration_type = "suggested"
+                else:
+                    duration_type = "not_set"
                 attrs[ha_name] = seconds
                 attrs[f"{ha_name}_type"] = type_labels[duration_type]
                 total_duration += seconds
@@ -422,7 +429,7 @@ class RainMachineProgramEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        for program in self.coordinator.data.get("programs", []):
+tml        for program in self.coordinator.data.get("programs", []):
             if program["uid"] == self._pid:
                 return program.get("active", False)
         return False

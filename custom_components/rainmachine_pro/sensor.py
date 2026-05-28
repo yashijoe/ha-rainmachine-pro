@@ -31,11 +31,11 @@ from .entity import RainMachineBaseEntity
 _LOGGER = logging.getLogger(__name__)
 
 _DURATION_TYPE_LABELS = {
-    "en": {"suggested": "adaptive", "fixed": "fixed"},
-    "it": {"suggested": "adattiva", "fixed": "fissa"},
-    "de": {"suggested": "adaptiv", "fixed": "fest"},
-    "fr": {"suggested": "adaptative", "fixed": "fixe"},
-    "es": {"suggested": "adaptativa", "fixed": "fija"},
+    "en": {"suggested": "suggested", "custom": "custom", "not_set": "not set"},
+    "it": {"suggested": "suggerita", "custom": "personalizzata", "not_set": "non impostata"},
+    "de": {"suggested": "vorgeschlagen", "custom": "benutzerdefiniert", "not_set": "nicht gesetzt"},
+    "fr": {"suggested": "suggérée", "custom": "personnalisée", "not_set": "non définie"},
+    "es": {"suggested": "sugerida", "custom": "personalizada", "not_set": "no definida"},
 }
 
 
@@ -281,13 +281,13 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
                     fixed_dur = wt.get("duration", 0)
                     if fixed_dur > 0:
                         seconds = fixed_dur
-                        duration_type = "fixed"
+                        duration_type = "custom"
                     elif ref_time > 0:
                         seconds = int(ref_time * wt.get("userPercentage", 1.0))
                         duration_type = "suggested"
                     else:
                         seconds = 0
-                        duration_type = "suggested"
+                        duration_type = "not_set"
                     ha_name = (
                         programs_cfg.get(str(prog["uid"]), {}).get("name")
                         or prog.get("name", f"Program {prog['uid']}")
