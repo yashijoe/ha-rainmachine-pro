@@ -71,6 +71,13 @@
           "even_days": "Días pares",
           "selected_days": "Días seleccionados"
         }
+      },
+      "zone_duration_type": {
+        "state": {
+          "suggested": "Sugerida",
+          "custom": "Personalizada",
+          "not_set": "No definida"
+        }
       }
     }
   }

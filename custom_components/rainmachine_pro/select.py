@@ -8,18 +8,16 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, CONF_PROGRAMS
+from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES
 from .coordinator import RainMachineProCoordinator
 from .entity import RainMachineBaseEntity
 
 _LOGGER = logging.getLogger(__name__)
 
 _FREEZE_TEMPS = [str(t) for t in range(-7, 5)]
-
-# Internal keys — translated via entity.select.program_frequency.state in translations/
 _FREQ_OPTIONS = ["daily", "every_n_days", "odd_days", "even_days", "selected_days"]
+_DURATION_TYPE_OPTIONS = ["suggested", "custom", "not_set"]
 
-# Weekday param: 10-char binary string, positions 2-8 = Sun..Mon
 _DAY_POS = [8, 7, 6, 5, 4, 3, 2]  # Mon(0)..Sun(6) → string position
 
 
@@ -54,6 +52,7 @@ async def async_setup_entry(
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
+    zones_config = entry.options.get(CONF_ZONES, {})
 
     entities = [RainMachineFreezeProtectionTemp(coordinator, entry)]
 
@@ -83,6 +82,18 @@ async def async_setup_entry(
         entities.append(
             RainMachineProgramFrequencySelect(fast_coordinator, entry, pid, name, freq_state)
         )
+
+        for wt in program.get("wateringTimes", []):
+            zid = wt["id"]
+            zone_cfg = zones_config.get(str(zid), {})
+            if not zone_cfg.get("enabled", False):
+                continue
+            zone_name = zone_cfg.get("name") or wt.get("name", f"Zone {zid}")
+            entities.append(
+                RainMachineProgramZoneDurationTypeSelect(
+                    fast_coordinator, coordinator, entry, pid, name, zid, zone_name
+                )
+            )
 
     async_add_entities(entities)
 
@@ -175,3 +186,80 @@ class RainMachineProgramFrequencySelect(RainMachineBaseEntity, SelectEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to set frequency for program %s: %s", self._pid, err)
+
+
+class RainMachineProgramZoneDurationTypeSelect(RainMachineBaseEntity, SelectEntity):
+    """Select entity to set duration type for a zone in a program."""
+
+    _attr_options = _DURATION_TYPE_OPTIONS
+    _attr_translation_key = "zone_duration_type"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:timer-edit-outline"
+
+    def __init__(
+        self, coordinator, slow_coordinator, entry,
+        pid: int, program_name: str, zid: int, zone_name: str
+    ) -> None:
+        super().__init__(coordinator, entry)
+        self._pid = pid
+        self._zid = zid
+        self._slow_coordinator = slow_coordinator
+        self._attr_name = f"{program_name} {zone_name} duration type"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_zone_{zid}_duration_type"
+
+    def _get_wt(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                for wt in prog.get("wateringTimes", []):
+                    if wt["id"] == self._zid:
+                        return wt
+        return None
+
+    @property
+    def current_option(self) -> str | None:
+        wt = self._get_wt()
+        if wt is None:
+            return None
+        if not wt.get("active", False):
+            return "not_set"
+        if wt.get("duration", 0) > 0:
+            return "custom"
+        return "suggested"
+
+    async def async_select_option(self, option: str) -> None:
+        wt = self._get_wt()
+        if wt is None:
+            return
+        current_duration = wt.get("duration", 0)
+        store_key = f"{self._pid}_{self._zid}"
+        backup = self.hass.data[DOMAIN][f"{self._entry.entry_id}_duration_backup"]
+        store = self.hass.data[DOMAIN][f"{self._entry.entry_id}_duration_store"]
+
+        if current_duration > 0:
+            backup[store_key] = current_duration
+            await store.async_save(backup)
+
+        try:
+            if option == "suggested":
+                await self.coordinator.client.action_set_zone_duration_type(
+                    self._pid, self._zid, active=True, duration=0
+                )
+            elif option == "custom":
+                restore = backup.get(store_key)
+                if not restore:
+                    zprops = self._slow_coordinator.data.get("zone_properties", {}).get(self._zid, {})
+                    ref_time = zprops.get("waterSense", {}).get("referenceTime", 0)
+                    restore = max(60, int(ref_time)) if ref_time > 0 else 600
+                await self.coordinator.client.action_set_zone_duration_type(
+                    self._pid, self._zid, active=True, duration=int(restore)
+                )
+            elif option == "not_set":
+                await self.coordinator.client.action_set_zone_duration_type(
+                    self._pid, self._zid, active=False
+                )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to set duration type for program %s zone %s: %s",
+                self._pid, self._zid, err,
+            )

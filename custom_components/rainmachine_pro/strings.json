@@ -59,5 +59,25 @@
         "description": "Select which weather parsers to expose as entities in Home Assistant."
       }
     }
+  },
+  "entity": {
+    "select": {
+      "program_frequency": {
+        "state": {
+          "daily": "Daily",
+          "every_n_days": "Every N days",
+          "odd_days": "Odd days",
+          "even_days": "Even days",
+          "selected_days": "Selected days"
+        }
+      },
+      "zone_duration_type": {
+        "state": {
+          "suggested": "Suggested",
+          "custom": "Custom",
+          "not_set": "Not set"
+        }
+      }
+    }
   }
 }

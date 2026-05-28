@@ -71,6 +71,13 @@
           "even_days": "Even days",
           "selected_days": "Selected days"
         }
+      },
+      "zone_duration_type": {
+        "state": {
+          "suggested": "Suggested",
+          "custom": "Custom",
+          "not_set": "Not set"
+        }
       }
     }
   }
