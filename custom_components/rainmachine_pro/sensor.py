@@ -277,17 +277,18 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
         result = {}
         for prog in self.coordinator.data.get("programs", []):
             for wt in prog.get("wateringTimes", []):
-                if wt.get("id") == self._uid and wt.get("active", False):
+                if wt.get("id") == self._uid:
+                    zone_active = wt.get("active", False)
                     fixed_dur = wt.get("duration", 0)
-                    if fixed_dur > 0:
-                        seconds = fixed_dur
-                        duration_type = "custom"
-                    elif ref_time > 0:
-                        seconds = int(ref_time * wt.get("userPercentage", 1.0))
-                        duration_type = "suggested"
-                    else:
+                    if not zone_active:
                         seconds = 0
                         duration_type = "not_set"
+                    elif fixed_dur > 0:
+                        seconds = fixed_dur
+                        duration_type = "custom"
+                    else:
+                        seconds = int(ref_time * wt.get("userPercentage", 1.0))
+                        duration_type = "suggested"
                     ha_name = (
                         programs_cfg.get(str(prog["uid"]), {}).get("name")
                         or prog.get("name", f"Program {prog['uid']}")

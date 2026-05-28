@@ -376,19 +376,21 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
             total_duration = 0
             for wt in prog.get("wateringTimes", []):
-                if not wt.get("active", False):
-                    continue
                 zid = wt["id"]
+                if not zones_cfg.get(str(zid), {}).get("enabled", False):
+                    continue
+                zone_active = wt.get("active", False)
                 ha_name = zones_cfg.get(str(zid), {}).get("name") or wt.get("name", f"Zone {zid}")
-                seconds = _zone_planned_seconds(wt, zone_properties)
                 fixed_dur = wt.get("duration", 0)
-                ref_time = zone_properties.get(zid, {}).get("waterSense", {}).get("referenceTime", 0)
-                if fixed_dur > 0:
-                    duration_type = "custom"
-                elif ref_time > 0:
-                    duration_type = "suggested"
-                else:
+                if not zone_active:
                     duration_type = "not_set"
+                    seconds = 0
+                elif fixed_dur > 0:
+                    duration_type = "custom"
+                    seconds = fixed_dur
+                else:
+                    duration_type = "suggested"
+                    seconds = _zone_planned_seconds(wt, zone_properties)
                 attrs[ha_name] = seconds
                 attrs[f"{ha_name}_type"] = type_labels[duration_type]
                 total_duration += seconds
