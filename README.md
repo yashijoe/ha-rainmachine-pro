@@ -154,7 +154,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `startTime` — scheduled start time
 - `flag` — reason if watering was skipped
 - `<program name>` — planned duration in seconds for each program that includes this zone
-- `<program name>_type` — `suggested` (WaterSense adaptive), `custom` (user-set fixed duration), or `not set` (no duration configured); translated per HA language
+- `<program name>_type` — `suggested` (WaterSense adaptive), `custom` (user-set fixed duration), or `not set` (zone not active in this program); translated per HA language
 
 **Program switches** include:
 
@@ -162,8 +162,8 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `next_run` / `last_run` — next and last run timestamps
 - `start_time` — scheduled start time (HH:MM)
 - `frequency` — translated frequency label (e.g. "Daily", "Ogni giorno")
-- `<zone name>` — planned duration in seconds for each active zone (integer, compatible with HA statistics)
-- `<zone name>_type` — `suggested` (WaterSense adaptive), `custom` (user-set fixed duration), or `not set` (no duration configured); translated per HA language
+- `<zone name>` — planned duration in seconds for each HA-enabled zone (0 if not active in this program)
+- `<zone name>_type` — `suggested` (WaterSense adaptive), `custom` (user-set fixed duration), or `not set` (zone not active in this program); translated per HA language
 - `total_duration` — total planned seconds across all active zones
 
 **Forecast sensors** include:
