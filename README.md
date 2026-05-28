@@ -12,8 +12,8 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Local polling** — communicates directly with your RainMachine on your LAN
 - **Today's watering summary** — total irrigation duration (including manual/forced runs) with statistics support for long-term tracking
 - **Per-zone details** — scheduled vs actual duration, start time, and skip reason for each zone
-- **Planned zone durations** — each program switch exposes expected watering duration per active zone (weather-adaptive or fixed); each zone sensor exposes expected duration per program
-- **Program duration adjustment** — per-program +/− buttons scale all active zone durations by a configurable step (5–20%); works for both adaptive and fixed zones
+- **Planned zone durations** — each program switch exposes expected watering duration per active zone (suggested, custom, or not set); each zone sensor exposes expected duration per program
+- **Program duration adjustment** — per-program +/− buttons scale all active zone durations by a configurable step (5–20%); works for both suggested and custom zones
 - **Editable program start time** — set each program's scheduled start time directly from Home Assistant
 - **Editable program frequency** — set each program's irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
 - **Weather adaptive watering** — per-program switch to enable/disable the use of internet weather data for adaptive watering
@@ -154,7 +154,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `startTime` — scheduled start time
 - `flag` — reason if watering was skipped
 - `<program name>` — planned duration in seconds for each program that includes this zone
-- `<program name>_type` — `adaptive` (weather-adaptive) or `fixed`, translated per HA language
+- `<program name>_type` — `suggested` (WaterSense adaptive), `custom` (user-set fixed duration), or `not set` (no duration configured); translated per HA language
 
 **Program switches** include:
 
@@ -163,7 +163,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `start_time` — scheduled start time (HH:MM)
 - `frequency` — translated frequency label (e.g. "Daily", "Ogni giorno")
 - `<zone name>` — planned duration in seconds for each active zone (integer, compatible with HA statistics)
-- `<zone name>_type` — `adaptive` (weather-adaptive) or `fixed`, translated per HA language
+- `<zone name>_type` — `suggested` (WaterSense adaptive), `custom` (user-set fixed duration), or `not set` (no duration configured); translated per HA language
 - `total_duration` — total planned seconds across all active zones
 
 **Forecast sensors** include:
@@ -186,8 +186,8 @@ Each enabled program gets three entities for proportional duration control:
 2. **Increase duration** (`button`) — multiplies every active zone's current duration by `(1 + step/100)`.
 3. **Decrease duration** (`button`) — multiplies every active zone's current duration by `(1 - step/100)`.
 
-For **adaptive zones**: scales `userPercentage` (clamped to 5%–500% of WaterSense reference).
-For **fixed zones**: scales the explicit `duration` value (minimum 60 seconds).
+For **suggested zones** (WaterSense adaptive): scales `userPercentage` (clamped to 5%–500% of WaterSense reference).
+For **custom zones** (user-set fixed duration): scales the explicit `duration` value (minimum 60 seconds).
 
 ## Program Frequency Editing
 
