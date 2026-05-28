@@ -195,43 +195,6 @@ class RainMachineClient:
             data["frequency"] = freq
             return await self._post(session, f"program/{pid}", data)
 
-    async def action_set_program_adaptive(
-        self,
-        pid: int,
-        adaptive: bool,
-        zone_properties: dict,
-        saved_durations: dict | None = None,
-    ) -> dict:
-        """Toggle all active zone durations between adaptive (duration=0) and fixed.
-
-        When switching to fixed (adaptive=False), duration priority:
-          1. saved_durations[zone_id]  — previously stored fixed value
-          2. waterSense.referenceTime  — device ET-based reference
-          3. 600 s fallback            — 10 minutes
-
-        saved_durations: {zone_id: seconds} populated by the switch before
-        calling turn_on (so the previous fixed value is never lost).
-        """
-        async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
-            data = await self._get(session, f"program/{pid}")
-            for wt in data.get("wateringTimes", []):
-                if not wt.get("active", False):
-                    continue
-                if adaptive:
-                    wt["duration"] = 0
-                else:
-                    zid = wt["id"]
-                    # 1. Use saved duration if available and positive
-                    if saved_durations and saved_durations.get(zid, 0) > 0:
-                        wt["duration"] = saved_durations[zid]
-                    else:
-                        # 2. Fallback to referenceTime
-                        zprops = zone_properties.get(zid, {})
-                        ref_time = int(zprops.get("waterSense", {}).get("referenceTime", 0))
-                        wt["duration"] = max(60, ref_time) if ref_time > 0 else 600
-            return await self._post(session, f"program/{pid}", data)
-
     async def action_set_global_restriction(self, payload: dict) -> dict:
         return await self._action("restrictions/global", payload)
 
