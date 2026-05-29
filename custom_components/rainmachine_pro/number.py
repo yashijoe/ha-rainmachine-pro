@@ -220,10 +220,10 @@ class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity, Rest
 
     _attr_has_entity_name = True
     _attr_native_min_value = 0.5
-    _attr_native_max_value = 60.0
+    _attr_native_max_value = 299.5
     _attr_native_step = 0.5
     _attr_native_unit_of_measurement = "min"
-    _attr_mode = NumberMode.SLIDER
+    _attr_mode = NumberMode.BOX
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.CONFIG
 
