@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES
@@ -214,8 +215,14 @@ class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
                 _LOGGER.error("Failed to set frequency interval for program %s: %s", self._pid, err)
 
 
-class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity):
-    """Number entity: custom duration (minutes, step 0.5) for a zone in a program."""
+class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity, RestoreEntity):
+    """Number entity: custom duration (minutes, step 0.5) for a zone in a program.
+
+    Value is independent of the current duration type (suggested/not_set):
+    - When device is in custom mode (duration > 0): syncs from device.
+    - When device is in suggested/not_set (duration == 0): keeps own value unchanged.
+    - Persists across HA restarts via RestoreEntity.
+    """
 
     _attr_has_entity_name = True
     _attr_native_min_value = 0.5
@@ -233,12 +240,25 @@ class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity):
         self._entry = entry
         self._pid = pid
         self._zid = zid
+        self._cached: float = 1.0
         self._attr_name = f"{prog_name} {zone_name} custom duration"
         self._attr_unique_id = f"{entry.entry_id}_program_{pid}_zone_{zid}_custom_duration"
 
     @property
     def device_info(self):
         return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state not in ("unknown", "unavailable"):
+            try:
+                self._cached = float(last_state.state)
+            except (ValueError, TypeError):
+                pass
+        duration = self._get_duration()
+        if duration > 0:
+            self._cached = round(duration / 60.0, 1)
 
     def _get_duration(self) -> int:
         for prog in self.coordinator.data.get("programs", []):
@@ -251,11 +271,12 @@ class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float:
         duration = self._get_duration()
-        if duration <= 0:
-            return 0.5
-        return round(duration / 60.0, 1)
+        if duration > 0:
+            self._cached = round(duration / 60.0, 1)
+        return self._cached
 
     async def async_set_native_value(self, value: float) -> None:
+        self._cached = value
         total_seconds = int(round(value * 60))
         try:
             await self.coordinator.client.action_set_zone_duration_type(
