@@ -73,7 +73,12 @@ async def async_setup_entry(
                 continue
             zone_name = zone_cfg.get("name") or wt.get("name", f"Zone {zid}")
             entities.append(
-                RainMachineProgramZoneDurationNumber(
+                RainMachineProgramZoneDurationMinutesNumber(
+                    fast_coordinator, entry, pid, name, zid, zone_name
+                )
+            )
+            entities.append(
+                RainMachineProgramZoneDurationSecondsNumber(
                     fast_coordinator, entry, pid, name, zid, zone_name
                 )
             )
@@ -214,58 +219,87 @@ class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
                 _LOGGER.error("Failed to set frequency interval for program %s: %s", self._pid, err)
 
 
-class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity):
-    """Number entity: custom duration (seconds) for a zone in a program."""
+class _ZoneDurationBase(CoordinatorEntity, NumberEntity):
+    """Shared helpers for zone duration minute/second entities."""
 
     _attr_has_entity_name = True
-    _attr_native_min_value = 60
-    _attr_native_max_value = 7200
-    _attr_native_step = 60
-    _attr_native_unit_of_measurement = "s"
     _attr_mode = NumberMode.BOX
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.CONFIG
 
-    def __init__(
-        self, coordinator, entry, pid: int, prog_name: str, zid: int, zone_name: str
-    ) -> None:
+    def __init__(self, coordinator, entry, pid: int, prog_name: str, zid: int, zone_name: str) -> None:
         super().__init__(coordinator)
         self._entry = entry
         self._pid = pid
         self._zid = zid
-        self._attr_name = f"{prog_name} {zone_name} custom duration"
-        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_zone_{zid}_custom_duration"
 
     @property
     def device_info(self):
         return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
 
-    def _get_wt(self) -> dict | None:
+    def _get_duration(self) -> int:
         for prog in self.coordinator.data.get("programs", []):
             if prog["uid"] == self._pid:
                 for wt in prog.get("wateringTimes", []):
                     if wt["id"] == self._zid:
-                        return wt
-        return None
+                        return wt.get("duration", 0)
+        return 0
 
-    @property
-    def native_value(self) -> float | None:
-        wt = self._get_wt()
-        if wt is None:
-            return None
-        return float(max(60, wt.get("duration", 60)) if wt.get("duration", 0) > 0 else 60)
-
-    async def async_set_native_value(self, value: float) -> None:
+    async def _post_duration(self, total_seconds: int) -> None:
         try:
             await self.coordinator.client.action_set_zone_duration_type(
-                self._pid, self._zid, active=True, duration=int(value)
+                self._pid, self._zid, active=True, duration=total_seconds
             )
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error(
-                "Failed to set custom duration for program %s zone %s: %s",
+                "Failed to set duration for program %s zone %s: %s",
                 self._pid, self._zid, err,
             )
+
+
+class RainMachineProgramZoneDurationMinutesNumber(_ZoneDurationBase):
+    """Number entity: custom duration minutes (0-299) for a zone in a program."""
+
+    _attr_native_min_value = 0
+    _attr_native_max_value = 299
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "min"
+
+    def __init__(self, coordinator, entry, pid, prog_name, zid, zone_name) -> None:
+        super().__init__(coordinator, entry, pid, prog_name, zid, zone_name)
+        self._attr_name = f"{prog_name} {zone_name} custom duration minutes"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_zone_{zid}_custom_duration_minutes"
+
+    @property
+    def native_value(self) -> float:
+        return float(self._get_duration() // 60)
+
+    async def async_set_native_value(self, value: float) -> None:
+        current_secs = self._get_duration() % 60
+        await self._post_duration(int(value) * 60 + current_secs)
+
+
+class RainMachineProgramZoneDurationSecondsNumber(_ZoneDurationBase):
+    """Number entity: custom duration seconds (0-59) for a zone in a program."""
+
+    _attr_native_min_value = 0
+    _attr_native_max_value = 59
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "s"
+
+    def __init__(self, coordinator, entry, pid, prog_name, zid, zone_name) -> None:
+        super().__init__(coordinator, entry, pid, prog_name, zid, zone_name)
+        self._attr_name = f"{prog_name} {zone_name} custom duration seconds"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_zone_{zid}_custom_duration_seconds"
+
+    @property
+    def native_value(self) -> float:
+        return float(self._get_duration() % 60)
+
+    async def async_set_native_value(self, value: float) -> None:
+        current_mins = self._get_duration() // 60
+        await self._post_duration(current_mins * 60 + int(value))
 
 
 class RainMachineProgramZonePercentageNumber(CoordinatorEntity, NumberEntity):
