@@ -4,7 +4,6 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.storage import Store
 
 from .api import RainMachineClient
 from .const import (
@@ -46,11 +45,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
     hass.data[DOMAIN][f"{entry.entry_id}_fast"] = fast_coordinator
 
-    store = Store(hass, version=1, key=f"rainmachine_pro_{entry.entry_id}_duration_backup")
-    backup_data = await store.async_load() or {}
-    hass.data[DOMAIN][f"{entry.entry_id}_duration_store"] = store
-    hass.data[DOMAIN][f"{entry.entry_id}_duration_backup"] = backup_data
-
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -69,6 +63,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
         hass.data[DOMAIN].pop(f"{entry.entry_id}_fast", None)
-        hass.data[DOMAIN].pop(f"{entry.entry_id}_duration_store", None)
-        hass.data[DOMAIN].pop(f"{entry.entry_id}_duration_backup", None)
     return unload_ok

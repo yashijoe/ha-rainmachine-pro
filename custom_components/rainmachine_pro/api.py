@@ -201,6 +201,20 @@ class RainMachineClient:
                     break
             return await self._post(session, f"program/{pid}", {"wateringTimes": watering_times})
 
+    async def action_set_zone_user_percentage(
+        self, pid: int, zid: int, percentage: float
+    ) -> dict:
+        """Set userPercentage for a zone in a program's wateringTimes."""
+        async with aiohttp.ClientSession() as session:
+            await self.authenticate(session)
+            data = await self._get(session, f"program/{pid}")
+            watering_times = data.get("wateringTimes", [])
+            for wt in watering_times:
+                if wt["id"] == zid:
+                    wt["userPercentage"] = round(percentage, 4)
+                    break
+            return await self._post(session, f"program/{pid}", {"wateringTimes": watering_times})
+
     async def action_set_program_start_time(self, pid: int, start_time: str) -> dict:
         """GET full program, update startTime (HH:MM string), POST back."""
         async with aiohttp.ClientSession() as session:

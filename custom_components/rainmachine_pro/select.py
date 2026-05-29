@@ -230,14 +230,6 @@ class RainMachineProgramZoneDurationTypeSelect(RainMachineBaseEntity, SelectEnti
         wt = self._get_wt()
         if wt is None:
             return
-        current_duration = wt.get("duration", 0)
-        store_key = f"{self._pid}_{self._zid}"
-        backup = self.hass.data[DOMAIN][f"{self._entry.entry_id}_duration_backup"]
-        store = self.hass.data[DOMAIN][f"{self._entry.entry_id}_duration_store"]
-
-        if current_duration > 0:
-            backup[store_key] = current_duration
-            await store.async_save(backup)
 
         try:
             if option == "suggested":
@@ -245,14 +237,18 @@ class RainMachineProgramZoneDurationTypeSelect(RainMachineBaseEntity, SelectEnti
                     self._pid, self._zid, active=True, duration=0
                 )
             elif option == "custom":
-                restore = backup.get(store_key)
-                if not restore:
+                current_duration = wt.get("duration", 0)
+                if current_duration > 0:
+                    await self.coordinator.client.action_set_zone_duration_type(
+                        self._pid, self._zid, active=True
+                    )
+                else:
                     zprops = self._slow_coordinator.data.get("zone_properties", {}).get(self._zid, {})
                     ref_time = zprops.get("waterSense", {}).get("referenceTime", 0)
-                    restore = max(60, int(ref_time)) if ref_time > 0 else 600
-                await self.coordinator.client.action_set_zone_duration_type(
-                    self._pid, self._zid, active=True, duration=int(restore)
-                )
+                    fallback = max(60, int(ref_time)) if ref_time > 0 else 600
+                    await self.coordinator.client.action_set_zone_duration_type(
+                        self._pid, self._zid, active=True, duration=fallback
+                    )
             elif option == "not_set":
                 await self.coordinator.client.action_set_zone_duration_type(
                     self._pid, self._zid, active=False

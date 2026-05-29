@@ -9,12 +9,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, CONF_PROGRAMS
+from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES
 from .coordinator import RainMachineProCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Weekday param: 10-char binary string, positions 2-8 = Sun..Mon
 _DAY_POS = [8, 7, 6, 5, 4, 3, 2]
 
 
@@ -31,6 +30,7 @@ async def async_setup_entry(
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
+    zones_config = entry.options.get(CONF_ZONES, {})
 
     entities = [RainMachineRainDelayNumber(coordinator, entry)]
 
@@ -65,6 +65,23 @@ async def async_setup_entry(
         entities.append(
             RainMachineProgramFrequencyInterval(fast_coordinator, entry, pid, name, freq_state)
         )
+
+        for wt in program.get("wateringTimes", []):
+            zid = wt["id"]
+            zone_cfg = zones_config.get(str(zid), {})
+            if not zone_cfg.get("enabled", False):
+                continue
+            zone_name = zone_cfg.get("name") or wt.get("name", f"Zone {zid}")
+            entities.append(
+                RainMachineProgramZoneDurationNumber(
+                    fast_coordinator, entry, pid, name, zid, zone_name
+                )
+            )
+            entities.append(
+                RainMachineProgramZonePercentageNumber(
+                    fast_coordinator, entry, pid, name, zid, zone_name
+                )
+            )
 
     async_add_entities(entities)
 
@@ -195,3 +212,111 @@ class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
                 await self.coordinator.async_request_refresh()
             except Exception as err:
                 _LOGGER.error("Failed to set frequency interval for program %s: %s", self._pid, err)
+
+
+class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity):
+    """Number entity: custom duration (seconds) for a zone in a program."""
+
+    _attr_has_entity_name = True
+    _attr_native_min_value = 60
+    _attr_native_max_value = 7200
+    _attr_native_step = 60
+    _attr_native_unit_of_measurement = "s"
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:timer-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self, coordinator, entry, pid: int, prog_name: str, zid: int, zone_name: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._pid = pid
+        self._zid = zid
+        self._attr_name = f"{prog_name} {zone_name} custom duration"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_zone_{zid}_custom_duration"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    def _get_wt(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                for wt in prog.get("wateringTimes", []):
+                    if wt["id"] == self._zid:
+                        return wt
+        return None
+
+    @property
+    def native_value(self) -> float | None:
+        wt = self._get_wt()
+        if wt is None:
+            return None
+        return float(max(60, wt.get("duration", 60)) if wt.get("duration", 0) > 0 else 60)
+
+    async def async_set_native_value(self, value: float) -> None:
+        try:
+            await self.coordinator.client.action_set_zone_duration_type(
+                self._pid, self._zid, active=True, duration=int(value)
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to set custom duration for program %s zone %s: %s",
+                self._pid, self._zid, err,
+            )
+
+
+class RainMachineProgramZonePercentageNumber(CoordinatorEntity, NumberEntity):
+    """Number entity: WaterSense userPercentage for a zone in a program."""
+
+    _attr_has_entity_name = True
+    _attr_native_min_value = 5
+    _attr_native_max_value = 500
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "%"
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:water-percent"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self, coordinator, entry, pid: int, prog_name: str, zid: int, zone_name: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._pid = pid
+        self._zid = zid
+        self._attr_name = f"{prog_name} {zone_name} watering percentage"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_zone_{zid}_watering_percentage"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    def _get_wt(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                for wt in prog.get("wateringTimes", []):
+                    if wt["id"] == self._zid:
+                        return wt
+        return None
+
+    @property
+    def native_value(self) -> float | None:
+        wt = self._get_wt()
+        if wt is None:
+            return None
+        return round(wt.get("userPercentage", 1.0) * 100, 1)
+
+    async def async_set_native_value(self, value: float) -> None:
+        try:
+            await self.coordinator.client.action_set_zone_user_percentage(
+                self._pid, self._zid, value / 100.0
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to set watering percentage for program %s zone %s: %s",
+                self._pid, self._zid, err,
+            )
