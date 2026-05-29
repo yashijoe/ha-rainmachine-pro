@@ -216,17 +216,11 @@ class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
 
 
 class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity, RestoreEntity):
-    """Number entity: custom duration (minutes, step 0.5) for a zone in a program.
-
-    Value is independent of the current duration type (suggested/not_set):
-    - When device is in custom mode (duration > 0): syncs from device.
-    - When device is in suggested/not_set (duration == 0): keeps own value unchanged.
-    - Persists across HA restarts via RestoreEntity.
-    """
+    """Number entity: custom duration (minutes, step 0.5) for a zone in a program."""
 
     _attr_has_entity_name = True
     _attr_native_min_value = 0.5
-    _attr_native_max_value = 299.5
+    _attr_native_max_value = 60.0
     _attr_native_step = 0.5
     _attr_native_unit_of_measurement = "min"
     _attr_mode = NumberMode.SLIDER
