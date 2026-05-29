@@ -288,9 +288,9 @@ class RainMachineProgramZonePercentageNumber(CoordinatorEntity, NumberEntity):
     """Number entity: WaterSense userPercentage for a zone in a program."""
 
     _attr_has_entity_name = True
-    _attr_native_min_value = 5
-    _attr_native_max_value = 500
-    _attr_native_step = 1
+    _attr_native_min_value = 10
+    _attr_native_max_value = 200
+    _attr_native_step = 5
     _attr_native_unit_of_measurement = "%"
     _attr_mode = NumberMode.BOX
     _attr_icon = "mdi:water-percent"
