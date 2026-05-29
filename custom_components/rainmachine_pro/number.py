@@ -73,6 +73,11 @@ async def async_setup_entry(
                 continue
             zone_name = zone_cfg.get("name") or wt.get("name", f"Zone {zid}")
             entities.append(
+                RainMachineProgramZoneDurationNumber(
+                    fast_coordinator, entry, pid, name, zid, zone_name
+                )
+            )
+            entities.append(
                 RainMachineProgramZonePercentageNumber(
                     fast_coordinator, entry, pid, name, zid, zone_name
                 )
@@ -207,6 +212,61 @@ class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
                 await self.coordinator.async_request_refresh()
             except Exception as err:
                 _LOGGER.error("Failed to set frequency interval for program %s: %s", self._pid, err)
+
+
+class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity):
+    """Number entity: custom duration (minutes, step 0.5) for a zone in a program."""
+
+    _attr_has_entity_name = True
+    _attr_native_min_value = 0.5
+    _attr_native_max_value = 299.5
+    _attr_native_step = 0.5
+    _attr_native_unit_of_measurement = "min"
+    _attr_mode = NumberMode.SLIDER
+    _attr_icon = "mdi:timer-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self, coordinator, entry, pid: int, prog_name: str, zid: int, zone_name: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._pid = pid
+        self._zid = zid
+        self._attr_name = f"{prog_name} {zone_name} custom duration"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_zone_{zid}_custom_duration"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    def _get_duration(self) -> int:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                for wt in prog.get("wateringTimes", []):
+                    if wt["id"] == self._zid:
+                        return wt.get("duration", 0)
+        return 0
+
+    @property
+    def native_value(self) -> float:
+        duration = self._get_duration()
+        if duration <= 0:
+            return 0.5
+        return round(duration / 60.0, 1)
+
+    async def async_set_native_value(self, value: float) -> None:
+        total_seconds = int(round(value * 60))
+        try:
+            await self.coordinator.client.action_set_zone_duration_type(
+                self._pid, self._zid, active=True, duration=total_seconds
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to set custom duration for program %s zone %s: %s",
+                self._pid, self._zid, err,
+            )
 
 
 class RainMachineProgramZonePercentageNumber(CoordinatorEntity, NumberEntity):
