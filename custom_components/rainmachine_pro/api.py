@@ -246,9 +246,11 @@ class RainMachineClient:
         """Adjust all active zone durations by +-5% of WaterSense referenceTime.
 
         direction: +1 to increase, -1 to decrease.
-        All active zones: new_pct = clamp(current_pct + direction*0.05, 0.05, 2.0).
-        Custom zones (duration>0): also update duration = int(referenceTime * new_pct).
-        Suggested zones (duration==0): update userPercentage only.
+        For custom zones (duration>0): current_pct derived from duration/referenceTime
+          (stored userPercentage is decoupled from duration and must not be used).
+        For suggested zones (duration==0): current_pct from stored userPercentage.
+        All zones: new_pct = clamp(current_pct + direction*0.05, 0.05, 2.0).
+        Custom zones: also update duration = int(referenceTime * new_pct).
         Zones without referenceTime are skipped.
         """
         async with aiohttp.ClientSession() as session:
@@ -266,10 +268,14 @@ class RainMachineClient:
                 )
                 if ref_time <= 0:
                     continue
-                current_pct = wt.get("userPercentage", 1.0)
+                fixed_dur = wt.get("duration", 0)
+                if fixed_dur > 0:
+                    current_pct = fixed_dur / ref_time
+                else:
+                    current_pct = wt.get("userPercentage", 1.0)
                 new_pct = round(max(0.05, min(2.0, current_pct + direction * 0.05)), 4)
                 wt["userPercentage"] = new_pct
-                if wt.get("duration", 0) > 0:
+                if fixed_dur > 0:
                     wt["duration"] = max(1, int(ref_time * new_pct))
             return await self._post(session, f"program/{pid}", {"wateringTimes": watering_times})
 
