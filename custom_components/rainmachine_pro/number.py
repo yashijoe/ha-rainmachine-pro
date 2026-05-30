@@ -42,11 +42,6 @@ async def async_setup_entry(
             continue
         name = prog_cfg.get("name") or program.get("name", f"Program {pid}")
 
-        step_key = f"{entry.entry_id}_prog_step_{pid}"
-        hass.data[DOMAIN].setdefault(step_key, {"value": 10})
-        step_state = hass.data[DOMAIN][step_key]
-        entities.append(RainMachineProgramAdjustStep(coordinator, entry, pid, name, step_state))
-
         freq_key = f"{entry.entry_id}_prog_freq_{pid}"
         if freq_key not in hass.data[DOMAIN]:
             freq_state = {"interval": 2, "days": [True] * 7}
@@ -126,38 +121,6 @@ class RainMachineRainDelayNumber(CoordinatorEntity, NumberEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to set rain delay: %s", err)
-
-
-class RainMachineProgramAdjustStep(CoordinatorEntity, NumberEntity):
-    """Number entity: duration adjustment step for a program (5-20%)."""
-
-    _attr_native_min_value = 5
-    _attr_native_max_value = 20
-    _attr_native_step = 5
-    _attr_native_unit_of_measurement = "%"
-    _attr_mode = NumberMode.SLIDER
-    _attr_icon = "mdi:percent-outline"
-    _attr_entity_category = EntityCategory.CONFIG
-
-    def __init__(self, coordinator, entry, pid: int, program_name: str, step_state: dict) -> None:
-        super().__init__(coordinator)
-        self._entry = entry
-        self._pid = pid
-        self._step_state = step_state
-        self._attr_name = f"{program_name} adjustment step"
-        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_adjust_step"
-
-    @property
-    def device_info(self):
-        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
-
-    @property
-    def native_value(self) -> float:
-        return float(self._step_state["value"])
-
-    async def async_set_native_value(self, value: float) -> None:
-        self._step_state["value"] = int(value)
-        self.async_write_ha_state()
 
 
 class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):

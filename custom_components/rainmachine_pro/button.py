@@ -32,11 +32,8 @@ async def async_setup_entry(
         if not prog_cfg.get("enabled", True):
             continue
         name = prog_cfg.get("name") or program.get("name", f"Program {pid}")
-        step_key = f"{entry.entry_id}_prog_step_{pid}"
-        hass.data[DOMAIN].setdefault(step_key, {"value": 10})
-        step_state = hass.data[DOMAIN][step_key]
-        entities.append(RainMachineProgramIncreaseButton(fast_coordinator, coordinator, entry, pid, name, step_state))
-        entities.append(RainMachineProgramDecreaseButton(fast_coordinator, coordinator, entry, pid, name, step_state))
+        entities.append(RainMachineProgramIncreaseButton(fast_coordinator, coordinator, entry, pid, name))
+        entities.append(RainMachineProgramDecreaseButton(fast_coordinator, coordinator, entry, pid, name))
 
     async_add_entities(entities)
 
@@ -60,48 +57,42 @@ class RainMachineRebootButton(RainMachineBaseEntity, ButtonEntity):
 
 
 class RainMachineProgramIncreaseButton(RainMachineBaseEntity, ButtonEntity):
-    """Button to increase all active zone durations in a program."""
+    """Button to increase all active zone durations by 5% of WaterSense referenceTime."""
 
     _attr_icon = "mdi:plus-circle-outline"
 
-    def __init__(self, coordinator, slow_coordinator, entry, pid: int, program_name: str, step_state: dict) -> None:
+    def __init__(self, coordinator, slow_coordinator, entry, pid: int, program_name: str) -> None:
         super().__init__(coordinator, entry)
         self._pid = pid
         self._slow_coordinator = slow_coordinator
-        self._step_state = step_state
         self._attr_name = f"{program_name} increase duration"
         self._attr_unique_id = f"{entry.entry_id}_program_{pid}_increase_duration"
 
     async def async_press(self) -> None:
-        step = self._step_state["value"]
-        multiplier = 1.0 + step / 100.0
         zone_properties = self._slow_coordinator.data.get("zone_properties", {})
         try:
-            await self.coordinator.client.action_scale_program_durations(self._pid, multiplier, zone_properties)
+            await self.coordinator.client.action_adjust_program_durations(self._pid, +1, zone_properties)
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to increase program %s duration: %s", self._pid, err)
 
 
 class RainMachineProgramDecreaseButton(RainMachineBaseEntity, ButtonEntity):
-    """Button to decrease all active zone durations in a program."""
+    """Button to decrease all active zone durations by 5% of WaterSense referenceTime."""
 
     _attr_icon = "mdi:minus-circle-outline"
 
-    def __init__(self, coordinator, slow_coordinator, entry, pid: int, program_name: str, step_state: dict) -> None:
+    def __init__(self, coordinator, slow_coordinator, entry, pid: int, program_name: str) -> None:
         super().__init__(coordinator, entry)
         self._pid = pid
         self._slow_coordinator = slow_coordinator
-        self._step_state = step_state
         self._attr_name = f"{program_name} decrease duration"
         self._attr_unique_id = f"{entry.entry_id}_program_{pid}_decrease_duration"
 
     async def async_press(self) -> None:
-        step = self._step_state["value"]
-        multiplier = 1.0 - step / 100.0
         zone_properties = self._slow_coordinator.data.get("zone_properties", {})
         try:
-            await self.coordinator.client.action_scale_program_durations(self._pid, multiplier, zone_properties)
+            await self.coordinator.client.action_adjust_program_durations(self._pid, -1, zone_properties)
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to decrease program %s duration: %s", self._pid, err)

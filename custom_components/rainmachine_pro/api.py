@@ -240,8 +240,17 @@ class RainMachineClient:
     async def action_start_update(self) -> dict:
         return await self._action("machine/update", {})
 
-    async def action_scale_program_durations(self, pid: int, multiplier: float, zone_properties: dict) -> dict:
-        """Scale all active zone durations in a program by multiplier (e.g. 1.05 = +5%)."""
+    async def action_adjust_program_durations(
+        self, pid: int, direction: int, zone_properties: dict
+    ) -> dict:
+        """Adjust all active zone durations by +-5% of WaterSense referenceTime.
+
+        direction: +1 to increase, -1 to decrease.
+        All active zones: new_pct = clamp(current_pct + direction*0.05, 0.05, 2.0).
+        Custom zones (duration>0): also update duration = int(referenceTime * new_pct).
+        Suggested zones (duration==0): update userPercentage only.
+        Zones without referenceTime are skipped.
+        """
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
@@ -249,15 +258,19 @@ class RainMachineClient:
             for wt in watering_times:
                 if not wt.get("active", False):
                     continue
-                fixed_dur = wt.get("duration", 0)
-                if fixed_dur > 0:
-                    wt["duration"] = max(60, int(fixed_dur * multiplier))
-                else:
-                    zprops = zone_properties.get(wt["id"], {})
-                    ref_time = zprops.get("waterSense", {}).get("referenceTime", 0)
-                    if ref_time > 0:
-                        new_pct = max(0.05, min(5.0, wt.get("userPercentage", 1.0) * multiplier))
-                        wt["userPercentage"] = round(new_pct, 4)
+                zid = wt["id"]
+                ref_time = (
+                    zone_properties.get(zid, {})
+                    .get("waterSense", {})
+                    .get("referenceTime", 0)
+                )
+                if ref_time <= 0:
+                    continue
+                current_pct = wt.get("userPercentage", 1.0)
+                new_pct = round(max(0.05, min(2.0, current_pct + direction * 0.05)), 4)
+                wt["userPercentage"] = new_pct
+                if wt.get("duration", 0) > 0:
+                    wt["duration"] = max(1, int(ref_time * new_pct))
             return await self._post(session, f"program/{pid}", {"wateringTimes": watering_times})
 
     # -------------------------------------------------------------------------
