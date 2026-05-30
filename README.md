@@ -13,9 +13,10 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Today's watering summary** — total irrigation duration (including manual/forced runs) with statistics support for long-term tracking
 - **Per-zone details** — scheduled vs actual duration, start time, and skip reason for each zone
 - **Planned zone durations** — each program switch exposes expected watering duration per active zone (suggested, custom, or not set); each zone sensor exposes expected duration per program
-- **Program duration adjustment** — per-program +/− buttons scale all active zone durations by a configurable step (5–20%); works for both suggested and custom zones
-- **Editable program start time** — set each program's scheduled start time directly from Home Assistant
-- **Editable program frequency** — set each program's irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
+- **Per-zone duration type control** — select `suggested`, `custom`, or `not set` per zone per program; set custom duration (minutes) and WaterSense percentage independently
+- **Program duration adjustment** — per-program +/− buttons adjust all active zone durations by a fixed 5% of each zone’s WaterSense reference time; works for both suggested and custom zones
+- **Editable program start time** — set each program’s scheduled start time directly from Home Assistant
+- **Editable program frequency** — set each program’s irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
 - **Weather adaptive watering** — per-program switch to enable/disable the use of internet weather data for adaptive watering
 - **Adaptive frequency** — per-program switch to enable/disable adaptive watering frequency adjustment
 - **Zone and program control** — start/stop irrigation zones and programs, enable/disable them
@@ -115,16 +116,17 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | Entity | Description | Range |
 |--------|-------------|-------|
 | `number.rainmachine_rain_delay_days` | Set rain delay | 0–14 days |
-| `number.<program_name>_adjustment_step` | Duration adjustment step for +/− buttons | 5–20% (step 5%) |
 | `number.<program_name>_frequency_interval` | Days between runs when frequency is "Every N days" | 1–14 days |
+| `number.<program>_<zone>_custom_duration` | Custom duration for a zone in a program (config category) | 0.5–299.5 min, step 0.5 |
+| `number.<program>_<zone>_watering_percentage` | WaterSense `userPercentage` for a zone in a program (config category) | 10–200%, step 5% |
 
 ### Button
 
 | Entity | Description |
 |--------|-------------|
 | `button.rainmachine_reboot` | Reboot the RainMachine controller |
-| `button.<program_name>_increase_duration` | Increase all active zone durations by the adjustment step |
-| `button.<program_name>_decrease_duration` | Decrease all active zone durations by the adjustment step |
+| `button.<program_name>_increase_duration` | Increase all active zone durations by 5% of each zone’s WaterSense reference time |
+| `button.<program_name>_decrease_duration` | Decrease all active zone durations by 5% of each zone’s WaterSense reference time |
 
 ### Select
 
@@ -132,6 +134,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 |--------|-------------|--------|
 | `select.rainmachine_freeze_protection_temperature` | Freeze protection threshold | −7 °C to +4 °C |
 | `select.<program_name>_frequency` | Irrigation frequency type | Daily / Every N days / Odd days / Even days / Selected days |
+| `select.<program>_<zone>_duration_type` | Duration type for a zone in a program (config category) | `suggested` / `custom` / `not set` |
 
 ### Time
 
@@ -178,16 +181,31 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `days_remaining` / `hours_remaining` / `minutes_remaining` / `seconds_remaining`
 - `ends_at`
 
+## Per-Zone Duration Type
+
+For each HA-enabled zone in each enabled program, three CONFIG-category entities are available:
+
+**`select.<program>_<zone>_duration_type`** — switches between three modes (translated in all 5 languages):
+- `suggested` — sets `active=true, duration=0`; device computes duration from WaterSense `referenceTime × userPercentage`
+- `custom` — sets `active=true` with an explicit duration; if the current device duration is 0, falls back to `referenceTime` or 600 s
+- `not set` — sets `active=false` (zone excluded from this program)
+
+**`number.<program>_<zone>_custom_duration`** — desired custom duration in minutes (0.5–299.5, step 0.5, box input). Independent of the current mode — value is preserved via `RestoreEntity` even when the zone is in suggested or not set mode. Syncs from device only when in custom mode.
+
+**`number.<program>_<zone>_watering_percentage`** — WaterSense `userPercentage` (10–200%, step 5%). Directly writes to the device and affects the suggested duration calculation.
+
 ## Program Duration Adjustment
 
-Each enabled program gets three entities for proportional duration control:
+Each enabled program exposes two button entities:
 
-1. **Adjustment step** (`number`) — select the increment/decrement percentage (5%, 10%, 15%, or 20%). Default: 10%.
-2. **Increase duration** (`button`) — multiplies every active zone's current duration by `(1 + step/100)`.
-3. **Decrease duration** (`button`) — multiplies every active zone's current duration by `(1 - step/100)`.
+- **`button.<program>_increase_duration`** — adds 5% of each zone’s WaterSense `referenceTime` to its current duration
+- **`button.<program>_decrease_duration`** — subtracts 5% of each zone’s WaterSense `referenceTime` from its current duration
 
-For **suggested zones** (WaterSense adaptive): scales `userPercentage` (clamped to 5%–500% of WaterSense reference).
-For **custom zones** (user-set fixed duration): scales the explicit `duration` value (minimum 60 seconds).
+The step is fixed at **5% of `referenceTime`** (the WaterSense 100% reference for each zone), which matches the RainMachine app’s +/− behaviour. The resulting `userPercentage` is clamped to the range 5%–200%.
+
+For **custom zones** (`duration > 0`): both `userPercentage` and `duration` are updated (`duration = int(referenceTime × new_pct)`).
+For **suggested zones** (`duration == 0`): only `userPercentage` is updated; the device recomputes the actual duration automatically.
+Zones without a valid `referenceTime` are skipped.
 
 ## Program Frequency Editing
 
@@ -226,7 +244,7 @@ This maps directly to the "adaptive frequency percentage" field in the RainMachi
 
 ## How It Works
 
-The integration polls your RainMachine's local API using two independent coordinators:
+The integration polls your RainMachine’s local API using two independent coordinators:
 
 - **Slow coordinator** (default every 5 min) — weather, forecast, restrictions, rain delay, provision, firmware, zone properties, watering details
 - **Fast coordinator** (default every 10 s) — zone list, program list, watering queue
@@ -234,16 +252,16 @@ The integration polls your RainMachine's local API using two independent coordin
 **API endpoints used:**
 
 | Endpoint | Data |
-|----------|------|
+|----------|---------|
 | `/api/4/auth/login` | Authentication |
 | `/api/4/parser` | Weather parser status |
-| `/api/4/watering/log/details` | Today's watering summary (all runs including manual) and per-zone details |
+| `/api/4/watering/log/details` | Today’s watering summary (all runs including manual) and per-zone details |
 | `/api/4/watering/queue` | Currently running zones/programs |
 | `/api/4/mixer` | Forecast conditions |
 | `/api/4/zone` | Zone list and status (includes master valve if present) |
-| `/api/4/zone/properties` | Zone WaterSense properties (referenceTime for planned durations) |
+| `/api/4/zone/properties` | Zone WaterSense properties (referenceTime, userPercentage) |
 | `/api/4/program` | Program list and status |
-| `/api/4/program/{id}` | Read/update program (start time, frequency, duration adjustment, weather adaptive, adaptive frequency) |
+| `/api/4/program/{id}` | Read/update program (start time, frequency, duration type, duration adjustment, weather adaptive, adaptive frequency) |
 | `/api/4/restrictions/currently` | Active restrictions |
 | `/api/4/restrictions/global` | Global restriction settings |
 | `/api/4/restrictions/raindelay` | Rain delay status (GET/POST) |
