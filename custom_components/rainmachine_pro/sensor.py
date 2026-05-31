@@ -556,7 +556,7 @@ class RainMachineZoneRunCountdown(RainMachineBaseEntity, SensorEntity):
         self._uid = uid
         self._slow_coordinator = slow_coordinator
         self._attr_name = f"{zone_name} run countdown"
-        self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_run_completion"
+        self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_run_countdown"
 
     @property
     def native_value(self) -> str | None:
@@ -609,7 +609,7 @@ class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
         self._pid = pid
         self._slow_coordinator = slow_coordinator
         self._attr_name = f"{program_name} run countdown"
-        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_run_completion"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_run_countdown"
 
     @property
     def native_value(self) -> str | None:
