@@ -15,6 +15,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Planned zone durations** — each program switch exposes expected watering duration per active zone (suggested, custom, or not set); each zone sensor exposes expected duration per program
 - **Per-zone duration type control** — select `suggested`, `custom`, or `not set` per zone per program; set custom duration (minutes) and WaterSense percentage independently
 - **Program duration adjustment** — per-program +/− buttons adjust all active zone durations by a fixed 5% of each zone’s WaterSense reference time; works for both suggested and custom zones
+- **Run countdown** — per-zone and per-program sensors showing remaining time as `M:SS` during active watering; works for both scheduled and manual runs
 - **Editable program start time** — set each program’s scheduled start time directly from Home Assistant
 - **Editable program frequency** — set each program’s irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
 - **Weather adaptive watering** — per-program switch to enable/disable the use of internet weather data for adaptive watering
@@ -82,8 +83,8 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `sensor.rainmachine_zone_<n>` | Per-zone watering details | min | `measurement` |
 | `sensor.rainmachine_parser_*` | Last run time for each weather parser | — | `timestamp` |
 | `sensor.rainmachine_forecast_<n>` | Daily forecast (yesterday through +5 days) | — | — |
-| `sensor.<zone>_run_completion_time` | Estimated end time for currently running zone | — | `timestamp` |
-| `sensor.<program>_run_completion_time` | Estimated end time for currently running program | — | `timestamp` |
+| `sensor.<zone>_run_countdown` | Remaining time for currently running zone (`M:SS`); `null` when idle | — | — |
+| `sensor.<program>_run_countdown` | Remaining time for currently running program (`M:SS`); `null` when idle | — | — |
 
 ### Binary Sensors
 
@@ -169,6 +170,11 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `<zone name>_type` — `suggested` (WaterSense adaptive), `custom` (user-set fixed duration), or `not set` (zone not active in this program); translated per HA language
 - `total_duration` — total planned seconds across all active zones
 
+**Run countdown sensors** include:
+
+- `remaining_seconds` — remaining seconds as integer (useful for automations)
+- `last_run_start` / `last_run_end` — start and end time of the previous run (zone sensors only)
+
 **Forecast sensors** include:
 
 - `temperature` / `min_temperature` / `max_temperature`
@@ -180,6 +186,17 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 
 - `days_remaining` / `hours_remaining` / `minutes_remaining` / `seconds_remaining`
 - `ends_at`
+
+## Run Countdown
+
+Each HA-enabled zone and each enabled program exposes a countdown sensor (diagnostic category, enabled by default):
+
+- **`sensor.<zone>_run_countdown`** — remaining time for the currently running zone as `M:SS` (e.g. `5:30`). Returns `null` when the zone is not running.
+- **`sensor.<program>_run_countdown`** — same for the whole program.
+
+The value comes directly from the device’s `remaining` field in the watering queue, which already accounts for weather-adaptive adjustments. The sensor updates every 10 seconds (fast coordinator). It works for both scheduled and manual starts — when started from HA via the zone switch, the coordinator refreshes immediately so the countdown appears within 1–2 seconds.
+
+The `remaining_seconds` attribute is also available for use in automations.
 
 ## Per-Zone Duration Type
 
@@ -203,9 +220,9 @@ Each enabled program exposes two button entities:
 
 The step is fixed at **5% of `referenceTime`** (the WaterSense 100% reference for each zone), which matches the RainMachine app’s +/− behaviour. The resulting `userPercentage` is clamped to the range 5%–200%.
 
-For **custom zones** (`duration > 0`): both `userPercentage` and `duration` are updated (`duration = int(referenceTime × new_pct)`).
+For **custom zones** (`duration > 0`): `current_pct` is derived from `duration / referenceTime`; both `userPercentage` and `duration` are updated (`duration = round(referenceTime × new_pct)`).
 For **suggested zones** (`duration == 0`): only `userPercentage` is updated; the device recomputes the actual duration automatically.
-Zones without a valid `referenceTime` are skipped.
+Zones without a valid `referenceTime` are skipped. `not set` zones (`active=false`) are skipped.
 
 ## Program Frequency Editing
 
@@ -256,7 +273,7 @@ The integration polls your RainMachine’s local API using two independent coord
 | `/api/4/auth/login` | Authentication |
 | `/api/4/parser` | Weather parser status |
 | `/api/4/watering/log/details` | Today’s watering summary (all runs including manual) and per-zone details |
-| `/api/4/watering/queue` | Currently running zones/programs |
+| `/api/4/watering/queue` | Currently running zones/programs (remaining seconds) |
 | `/api/4/mixer` | Forecast conditions |
 | `/api/4/zone` | Zone list and status (includes master valve if present) |
 | `/api/4/zone/properties` | Zone WaterSense properties (referenceTime, userPercentage) |
