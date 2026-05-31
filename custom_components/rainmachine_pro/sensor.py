@@ -39,6 +39,12 @@ _DURATION_TYPE_LABELS = {
 }
 
 
+def _seconds_to_mmss(seconds: int) -> str:
+    mins = seconds // 60
+    secs = seconds % 60
+    return f"{mins}:{secs:02d}"
+
+
 def _sum_details_today(data: dict, field: str) -> int:
     """Sum a cycle field across all programs/zones/cycles for today."""
     days = data.get("details", {}).get("waterLog", {}).get("days", [])
@@ -110,7 +116,7 @@ async def async_setup_entry(
             continue
         name = zone_cfg.get("name") or zone.get("name", f"Zone {uid}")
         entities.append(
-            RainMachineZoneRunCompletionTime(
+            RainMachineZoneRunCountdown(
                 fast_coordinator, coordinator, entry, uid, name
             )
         )
@@ -122,7 +128,7 @@ async def async_setup_entry(
             continue
         name = prog_cfg.get("name") or program.get("name", f"Program {pid}")
         entities.append(
-            RainMachineProgramRunCompletionTime(
+            RainMachineProgramRunCountdown(
                 fast_coordinator, coordinator, entry, pid, name
             )
         )
@@ -535,13 +541,12 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
 
 
 # ---------------------------------------------------------------------------
-# Run completion time sensors
+# Run countdown sensors
 # ---------------------------------------------------------------------------
 
-class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
-    """Sensor: when the current zone run will finish."""
+class RainMachineZoneRunCountdown(RainMachineBaseEntity, SensorEntity):
+    """Sensor: remaining time for current zone run in M:SS format."""
 
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = True
@@ -550,26 +555,24 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
         super().__init__(coordinator, entry)
         self._uid = uid
         self._slow_coordinator = slow_coordinator
-        self._attr_name = f"{zone_name} run completion time"
+        self._attr_name = f"{zone_name} run countdown"
         self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_run_completion"
 
     @property
-    def native_value(self) -> datetime | None:
+    def native_value(self) -> str | None:
         for item in self.coordinator.data.get("queue", []):
             if item.get("zid") == self._uid and item.get("running"):
                 remaining = item.get("remaining", 0)
                 if remaining > 0:
-                    return datetime.now().astimezone() + timedelta(seconds=remaining)
+                    return _seconds_to_mmss(remaining)
         return None
 
     @property
     def extra_state_attributes(self) -> dict:
         attrs = {}
         for item in self.coordinator.data.get("queue", []):
-            if item.get("zid") == self._uid and not item.get("running"):
-                val = item.get("startTime") or item.get("eta")
-                if val:
-                    attrs["next_run"] = val
+            if item.get("zid") == self._uid and item.get("running"):
+                attrs["remaining_seconds"] = item.get("remaining", 0)
                 break
         try:
             details = self._slow_coordinator.data.get("details", {})
@@ -594,10 +597,9 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
         return attrs
 
 
-class RainMachineProgramRunCompletionTime(RainMachineBaseEntity, SensorEntity):
-    """Sensor: when the current program run will finish."""
+class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
+    """Sensor: remaining time for current program run in M:SS format."""
 
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = True
@@ -606,21 +608,25 @@ class RainMachineProgramRunCompletionTime(RainMachineBaseEntity, SensorEntity):
         super().__init__(coordinator, entry)
         self._pid = pid
         self._slow_coordinator = slow_coordinator
-        self._attr_name = f"{program_name} run completion time"
+        self._attr_name = f"{program_name} run countdown"
         self._attr_unique_id = f"{entry.entry_id}_program_{pid}_run_completion"
 
     @property
-    def native_value(self) -> datetime | None:
+    def native_value(self) -> str | None:
         for item in self.coordinator.data.get("queue", []):
             if item.get("pid") == self._pid and item.get("running"):
                 remaining = item.get("remaining", 0)
                 if remaining > 0:
-                    return datetime.now().astimezone() + timedelta(seconds=remaining)
+                    return _seconds_to_mmss(remaining)
         return None
 
     @property
     def extra_state_attributes(self) -> dict:
         attrs = {}
+        for item in self.coordinator.data.get("queue", []):
+            if item.get("pid") == self._pid and item.get("running"):
+                attrs["remaining_seconds"] = item.get("remaining", 0)
+                break
         for prog in self._slow_coordinator.data.get("programs", []):
             if prog["uid"] == self._pid:
                 next_run = prog.get("nextRun")
