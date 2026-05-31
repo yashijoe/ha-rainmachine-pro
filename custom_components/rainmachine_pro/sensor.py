@@ -11,8 +11,9 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
@@ -541,11 +542,11 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
 
 
 # ---------------------------------------------------------------------------
-# Run countdown sensors
+# Run countdown sensors (second-by-second)
 # ---------------------------------------------------------------------------
 
 class RainMachineZoneRunCountdown(RainMachineBaseEntity, SensorEntity):
-    """Sensor: remaining time for current zone run in M:SS format."""
+    """Sensor: remaining time for current zone run in M:SS format, updated every second."""
 
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -557,23 +558,62 @@ class RainMachineZoneRunCountdown(RainMachineBaseEntity, SensorEntity):
         self._slow_coordinator = slow_coordinator
         self._attr_name = f"{zone_name} run countdown"
         self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_run_countdown"
+        self._end_time: datetime | None = None
+        self._unsub_timer = None
 
-    @property
-    def native_value(self) -> str | None:
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._unsub_timer = async_track_time_interval(
+            self.hass, self._async_tick, timedelta(seconds=1)
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub_timer:
+            self._unsub_timer()
+            self._unsub_timer = None
+
+    @callback
+    def _async_tick(self, now) -> None:
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        new_end_time = None
         for item in self.coordinator.data.get("queue", []):
             if item.get("zid") == self._uid and item.get("running"):
                 remaining = item.get("remaining", 0)
                 if remaining > 0:
-                    return _seconds_to_mmss(remaining)
-        return None
+                    new_end_time = datetime.now().astimezone() + timedelta(seconds=remaining)
+                break
+
+        if new_end_time is None:
+            self._end_time = None
+        elif self._end_time is None:
+            self._end_time = new_end_time
+        else:
+            local_rem = (self._end_time - datetime.now().astimezone()).total_seconds()
+            device_rem = (new_end_time - datetime.now().astimezone()).total_seconds()
+            if abs(local_rem - device_rem) > 2:
+                self._end_time = new_end_time
+
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> str | None:
+        if self._end_time is None:
+            return None
+        remaining = (self._end_time - datetime.now().astimezone()).total_seconds()
+        if remaining <= 0:
+            self._end_time = None
+            return None
+        return _seconds_to_mmss(int(remaining))
 
     @property
     def extra_state_attributes(self) -> dict:
         attrs = {}
-        for item in self.coordinator.data.get("queue", []):
-            if item.get("zid") == self._uid and item.get("running"):
-                attrs["remaining_seconds"] = item.get("remaining", 0)
-                break
+        if self._end_time is not None:
+            remaining = (self._end_time - datetime.now().astimezone()).total_seconds()
+            attrs["remaining_seconds"] = max(0, int(remaining))
         try:
             details = self._slow_coordinator.data.get("details", {})
             for day in details.get("waterLog", {}).get("days", []):
@@ -598,7 +638,7 @@ class RainMachineZoneRunCountdown(RainMachineBaseEntity, SensorEntity):
 
 
 class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
-    """Sensor: remaining time for current program run in M:SS format."""
+    """Sensor: remaining time for current program run in M:SS format, updated every second."""
 
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -610,23 +650,62 @@ class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
         self._slow_coordinator = slow_coordinator
         self._attr_name = f"{program_name} run countdown"
         self._attr_unique_id = f"{entry.entry_id}_program_{pid}_run_countdown"
+        self._end_time: datetime | None = None
+        self._unsub_timer = None
 
-    @property
-    def native_value(self) -> str | None:
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._unsub_timer = async_track_time_interval(
+            self.hass, self._async_tick, timedelta(seconds=1)
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub_timer:
+            self._unsub_timer()
+            self._unsub_timer = None
+
+    @callback
+    def _async_tick(self, now) -> None:
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        new_end_time = None
         for item in self.coordinator.data.get("queue", []):
             if item.get("pid") == self._pid and item.get("running"):
                 remaining = item.get("remaining", 0)
                 if remaining > 0:
-                    return _seconds_to_mmss(remaining)
-        return None
+                    new_end_time = datetime.now().astimezone() + timedelta(seconds=remaining)
+                break
+
+        if new_end_time is None:
+            self._end_time = None
+        elif self._end_time is None:
+            self._end_time = new_end_time
+        else:
+            local_rem = (self._end_time - datetime.now().astimezone()).total_seconds()
+            device_rem = (new_end_time - datetime.now().astimezone()).total_seconds()
+            if abs(local_rem - device_rem) > 2:
+                self._end_time = new_end_time
+
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> str | None:
+        if self._end_time is None:
+            return None
+        remaining = (self._end_time - datetime.now().astimezone()).total_seconds()
+        if remaining <= 0:
+            self._end_time = None
+            return None
+        return _seconds_to_mmss(int(remaining))
 
     @property
     def extra_state_attributes(self) -> dict:
         attrs = {}
-        for item in self.coordinator.data.get("queue", []):
-            if item.get("pid") == self._pid and item.get("running"):
-                attrs["remaining_seconds"] = item.get("remaining", 0)
-                break
+        if self._end_time is not None:
+            remaining = (self._end_time - datetime.now().astimezone()).total_seconds()
+            attrs["remaining_seconds"] = max(0, int(remaining))
         for prog in self._slow_coordinator.data.get("programs", []):
             if prog["uid"] == self._pid:
                 next_run = prog.get("nextRun")
