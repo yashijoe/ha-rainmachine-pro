@@ -544,7 +544,7 @@ class RainMachineZoneRunCompletionTime(RainMachineBaseEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
+    _attr_entity_registry_enabled_default = True
 
     def __init__(self, coordinator, slow_coordinator, entry, uid: int, zone_name: str) -> None:
         super().__init__(coordinator, entry)
@@ -600,7 +600,7 @@ class RainMachineProgramRunCompletionTime(RainMachineBaseEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
+    _attr_entity_registry_enabled_default = True
 
     def __init__(self, coordinator, slow_coordinator, entry, pid: int, program_name: str) -> None:
         super().__init__(coordinator, entry)
