@@ -138,8 +138,6 @@ async def async_setup_entry(
 
 
 class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
-    """Sensor for today's total watering duration."""
-
     _attr_native_unit_of_measurement = "min"
     _attr_state_class = SensorStateClass.TOTAL
     _attr_icon = "mdi:sprinkler"
@@ -165,15 +163,10 @@ class RainMachineTodayWateringSensor(RainMachineBaseEntity, SensorEntity):
         user_duration = _sum_details_today(self.coordinator.data, "userDuration")
         mins = user_duration // 60
         secs = user_duration % 60
-        return {
-            "date": today_str,
-            "userDuration": f"{mins}:{secs:02d}",
-        }
+        return {"date": today_str, "userDuration": f"{mins}:{secs:02d}"}
 
 
 class RainMachineTodayScheduledWateringSensor(RainMachineBaseEntity, SensorEntity):
-    """Sensor for today's total scheduled watering duration."""
-
     _attr_native_unit_of_measurement = "min"
     _attr_state_class = SensorStateClass.TOTAL
     _attr_icon = "mdi:sprinkler-variant"
@@ -195,8 +188,6 @@ class RainMachineTodayScheduledWateringSensor(RainMachineBaseEntity, SensorEntit
 
 
 class RainMachineRainDelaySensor(RainMachineBaseEntity, SensorEntity):
-    """Sensor for rain delay status."""
-
     _attr_icon = "mdi:timer-sand"
     _attr_name = "Rain delay"
 
@@ -227,29 +218,15 @@ class RainMachineRainDelaySensor(RainMachineBaseEntity, SensorEntity):
         rd = self.coordinator.data.get("raindelay", {})
         delay_sec = int(rd.get("delayCounter", -1))
         if delay_sec <= 0:
-            return {
-                "seconds_remaining": 0,
-                "minutes_remaining": 0,
-                "hours_remaining": 0,
-                "days_remaining": 0,
-                "ends_at": None,
-            }
+            return {"seconds_remaining": 0, "minutes_remaining": 0, "hours_remaining": 0, "days_remaining": 0, "ends_at": None}
         days = delay_sec // 86400
         hours = (delay_sec % 86400) // 3600
         minutes = (delay_sec % 3600) // 60
         ends_at = (datetime.now() + timedelta(seconds=delay_sec)).strftime("%Y-%m-%d %H:%M:%S")
-        return {
-            "days_remaining": days,
-            "hours_remaining": hours,
-            "minutes_remaining": minutes,
-            "seconds_remaining": delay_sec,
-            "ends_at": ends_at,
-        }
+        return {"days_remaining": days, "hours_remaining": hours, "minutes_remaining": minutes, "seconds_remaining": delay_sec, "ends_at": ends_at}
 
 
 class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
-    """Sensor for zone watering details."""
-
     _attr_native_unit_of_measurement = "min"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:sprinkler"
@@ -280,7 +257,6 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
         zprops = zone_properties.get(self._uid, {})
         ref_time = zprops.get("waterSense", {}).get("referenceTime", 0)
         programs_cfg = self._entry.options.get(CONF_PROGRAMS, {})
-
         result = {}
         for prog in self.coordinator.data.get("programs", []):
             for wt in prog.get("wateringTimes", []):
@@ -296,10 +272,7 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
                     else:
                         seconds = int(ref_time * wt.get("userPercentage", 1.0))
                         duration_type = "suggested"
-                    ha_name = (
-                        programs_cfg.get(str(prog["uid"]), {}).get("name")
-                        or prog.get("name", f"Program {prog['uid']}")
-                    )
+                    ha_name = (programs_cfg.get(str(prog["uid"]), {}).get("name") or prog.get("name", f"Program {prog['uid']}"))
                     result[ha_name] = seconds
                     result[f"{ha_name}_type"] = type_labels[duration_type]
                     break
@@ -318,25 +291,18 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
         lang = self._get_lang()
         flag_map = FLAG_MAP.get(lang, FLAG_MAP["en"])
         zone = self._get_zone_data()
-
         if not zone:
             attrs = {
-                "userDuration": 0,
-                "userDuration_unit": "min",
-                "realDuration": 0,
-                "realDuration_unit": "min",
+                "userDuration": 0, "userDuration_unit": "min", "realDuration": 0, "realDuration_unit": "min",
                 "userDuration_display": "0 min previsti" if lang == "it" else "0 min scheduled",
                 "realDuration_display": "0 min effettivi" if lang == "it" else "0 min actual",
-                "startTime": None,
-                "flag": flag_map.get(-1, "No watering"),
-                "icon": "mdi:sprinkler",
+                "startTime": None, "flag": flag_map.get(-1, "No watering"), "icon": "mdi:sprinkler",
             }
         else:
             cycle = zone.get("cycles", [{}])[0]
             real_dur = int(cycle.get("realDuration", 0)) // 60
             user_dur = int(cycle.get("userDuration", 0)) // 60
             flag = zone.get("flag", -1)
-
             if lang == "it":
                 user_label, real_label = "previsti", "effettivi"
             elif lang == "de":
@@ -347,26 +313,16 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
                 user_label, real_label = "previstos", "efectivos"
             else:
                 user_label, real_label = "scheduled", "actual"
-
             attrs = {
-                "userDuration": user_dur,
-                "userDuration_unit": "min",
-                "realDuration": real_dur,
-                "realDuration_unit": "min",
-                "userDuration_display": f"{user_dur} min {user_label}",
-                "realDuration_display": f"{real_dur} min {real_label}",
-                "startTime": cycle.get("startTime"),
-                "flag": flag_map.get(flag, flag_map.get(-1, "No watering")),
-                "icon": "mdi:sprinkler",
+                "userDuration": user_dur, "userDuration_unit": "min", "realDuration": real_dur, "realDuration_unit": "min",
+                "userDuration_display": f"{user_dur} min {user_label}", "realDuration_display": f"{real_dur} min {real_label}",
+                "startTime": cycle.get("startTime"), "flag": flag_map.get(flag, flag_map.get(-1, "No watering")), "icon": "mdi:sprinkler",
             }
-
         attrs.update(self._get_program_durations())
         return attrs
 
 
 class RainMachineParserSensor(RainMachineBaseEntity, SensorEntity):
-    """Sensor for weather parser last run."""
-
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(self, coordinator, entry, uid: int, description: str):
@@ -425,8 +381,6 @@ class RainMachineParserSensor(RainMachineBaseEntity, SensorEntity):
 
 
 class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
-    """Sensor for daily forecast conditions."""
-
     def __init__(self, coordinator, entry, index: int):
         super().__init__(coordinator, entry)
         self._index = index
@@ -439,7 +393,6 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
             daily_values = forecast["mixerData"][0]["dailyValues"]
         except (KeyError, IndexError, TypeError):
             return None, 0
-
         today = datetime.today().date()
         yesterday = today - timedelta(days=1)
         selected = []
@@ -448,7 +401,6 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
             if yesterday <= day_date <= yesterday + timedelta(days=6):
                 selected.append((day_date, daily))
         selected.sort(key=lambda x: x[0])
-
         if self._index < len(selected):
             day_date, data = selected[self._index]
             delta = (day_date - today).days
@@ -515,28 +467,20 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
         }
         labels = rain_labels.get(lang, rain_labels["en"])
         return {
-            "temperature": int(data.get("temperature", 0)),
-            "temperature_unit": "°C",
+            "temperature": int(data.get("temperature", 0)), "temperature_unit": "°C",
             "temperature_display": f"{int(data.get('temperature', 0))}°",
-            "min_temperature": int(data.get("minTemp", 0)),
-            "min_temperature_unit": "°C",
+            "min_temperature": int(data.get("minTemp", 0)), "min_temperature_unit": "°C",
             "min_temperature_display": f"{int(data.get('minTemp', 0))}° min",
-            "max_temperature": int(data.get("maxTemp", 0)),
-            "max_temperature_unit": "°C",
+            "max_temperature": int(data.get("maxTemp", 0)), "max_temperature_unit": "°C",
             "max_temperature_display": f"{int(data.get('maxTemp', 0))}° max",
-            "rain": data.get("rain", 0),
-            "rain_unit": "mm",
+            "rain": data.get("rain", 0), "rain_unit": "mm",
             "rain_display": f"{data.get('rain', 0)} mm {labels['rain']}",
-            "precipitation_forecast": data.get("qpf", 0),
-            "precipitation_forecast_unit": "mm",
+            "precipitation_forecast": data.get("qpf", 0), "precipitation_forecast_unit": "mm",
             "precipitation_forecast_display": f"{data.get('qpf', 0)} mm {labels['forecast']}",
-            "EvapoTranspiration": data.get("et0final", 0),
-            "EvapoTranspiration_unit": "mm",
+            "EvapoTranspiration": data.get("et0final", 0), "EvapoTranspiration_unit": "mm",
             "EvapoTranspiration_display": f"{data.get('et0final', 0)} mm",
-            "day": data.get("day", "").split(" ")[0],
-            "meteocode": code,
-            "friendly_name": self._get_day_label(delta),
-            "state_translated": state_translated,
+            "day": data.get("day", "").split(" ")[0], "meteocode": code,
+            "friendly_name": self._get_day_label(delta), "state_translated": state_translated,
             "icon": f"mdi:weather-{condition}",
         }
 
@@ -585,7 +529,6 @@ class RainMachineZoneRunCountdown(RainMachineBaseEntity, SensorEntity):
                 if remaining > 0:
                     new_end_time = datetime.now().astimezone() + timedelta(seconds=remaining)
                 break
-
         if new_end_time is None:
             self._end_time = None
         elif self._end_time is None:
@@ -595,7 +538,6 @@ class RainMachineZoneRunCountdown(RainMachineBaseEntity, SensorEntity):
             device_rem = (new_end_time - datetime.now().astimezone()).total_seconds()
             if abs(local_rem - device_rem) > 2:
                 self._end_time = new_end_time
-
         self.async_write_ha_state()
 
     @property
@@ -638,7 +580,7 @@ class RainMachineZoneRunCountdown(RainMachineBaseEntity, SensorEntity):
 
 
 class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
-    """Sensor: remaining time for current program run in M:SS format, updated every second."""
+    """Sensor: total remaining time for current program run in M:SS format, updated every second."""
 
     _attr_icon = "mdi:timer-outline"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -670,24 +612,19 @@ class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        new_end_time = None
-        for item in self.coordinator.data.get("queue", []):
-            if item.get("pid") == self._pid and item.get("running"):
-                remaining = item.get("remaining", 0)
-                if remaining > 0:
-                    new_end_time = datetime.now().astimezone() + timedelta(seconds=remaining)
-                break
-
-        if new_end_time is None:
+        total_remaining = sum(
+            item.get("remaining", 0)
+            for item in self.coordinator.data.get("queue", [])
+            if item.get("pid") == self._pid
+        )
+        if total_remaining <= 0:
             self._end_time = None
         elif self._end_time is None:
-            self._end_time = new_end_time
+            self._end_time = datetime.now().astimezone() + timedelta(seconds=total_remaining)
         else:
             local_rem = (self._end_time - datetime.now().astimezone()).total_seconds()
-            device_rem = (new_end_time - datetime.now().astimezone()).total_seconds()
-            if abs(local_rem - device_rem) > 2:
-                self._end_time = new_end_time
-
+            if abs(local_rem - total_remaining) > 2:
+                self._end_time = datetime.now().astimezone() + timedelta(seconds=total_remaining)
         self.async_write_ha_state()
 
     @property
