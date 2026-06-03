@@ -240,6 +240,10 @@ class RainMachineClient:
     async def action_start_update(self) -> dict:
         return await self._action("machine/update", {})
 
+    async def action_pause_watering(self, duration_seconds: int) -> dict:
+        """Pause all watering. duration_seconds=0 cancels the pause."""
+        return await self._action("watering/pauseall", {"duration": duration_seconds})
+
     async def action_adjust_program_durations(
         self, pid: int, direction: int, zone_properties: dict
     ) -> dict:

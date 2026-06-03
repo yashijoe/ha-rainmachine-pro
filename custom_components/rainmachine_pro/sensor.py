@@ -134,6 +134,8 @@ async def async_setup_entry(
             )
         )
 
+    entities.append(RainMachinePauseCountdown(fast_coordinator, coordinator, entry))
+
     async_add_entities(entities)
 
 
@@ -603,7 +605,7 @@ class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub_timer:
-            self._unsub_timer()
+            self._unsub_timer()            
             self._unsub_timer = None
 
     @callback
@@ -652,4 +654,66 @@ class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
                 if last_run:
                     attrs["last_run"] = last_run
                 break
+        return attrs
+
+
+class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
+    """Sensor: remaining pause time in M:SS format, updated every second."""
+
+    _attr_icon = "mdi:pause-circle-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = True
+
+    def __init__(self, coordinator, slow_coordinator, entry) -> None:
+        super().__init__(coordinator, entry)
+        self._slow_coordinator = slow_coordinator
+        self._attr_name = "Pause countdown"
+        self._attr_unique_id = f"{entry.entry_id}_pause_countdown"
+        self._end_time: datetime | None = None
+        self._unsub_timer = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._unsub_timer = async_track_time_interval(
+            self.hass, self._async_tick, timedelta(seconds=1)
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub_timer:
+            self._unsub_timer()
+            self._unsub_timer = None
+
+    @callback
+    def _async_tick(self, now) -> None:
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        stored = self.hass.data[DOMAIN].get(f"{self._entry.entry_id}_pause_end_time")
+        if stored is None:
+            self._end_time = None
+        else:
+            self._end_time = stored
+            # If any zone is now running, pause ended externally
+            if any(item.get("running") for item in self.coordinator.data.get("queue", [])):
+                self._end_time = None
+                self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = None
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> str | None:
+        if self._end_time is None:
+            return None
+        remaining = (self._end_time - datetime.now().astimezone()).total_seconds()
+        if remaining <= 0:
+            self._end_time = None
+            return None
+        return _seconds_to_mmss(int(remaining))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        attrs = {}
+        if self._end_time is not None:
+            remaining = (self._end_time - datetime.now().astimezone()).total_seconds()
+            attrs["remaining_seconds"] = max(0, int(remaining))
         return attrs

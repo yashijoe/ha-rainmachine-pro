@@ -33,7 +33,12 @@ async def async_setup_entry(
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
     zones_config = entry.options.get(CONF_ZONES, {})
 
-    entities = [RainMachineRainDelayNumber(coordinator, entry)]
+    hass.data[DOMAIN].setdefault(f"{entry.entry_id}_pause_duration_min", 0.0)
+
+    entities = [
+        RainMachineRainDelayNumber(coordinator, entry),
+        RainMachinePauseDurationNumber(coordinator, entry),
+    ]
 
     for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
@@ -121,6 +126,38 @@ class RainMachineRainDelayNumber(CoordinatorEntity, NumberEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to set rain delay: %s", err)
+
+
+class RainMachinePauseDurationNumber(CoordinatorEntity, NumberEntity):
+    """Number entity: pause duration in minutes (0 = cancel/no pause)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Pause duration"
+    _attr_icon = "mdi:pause-circle-outline"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 720
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "min"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._value: float = 0.0
+        self._attr_unique_id = f"{entry.entry_id}_pause_duration"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    @property
+    def native_value(self) -> float:
+        return self._value
+
+    async def async_set_native_value(self, value: float) -> None:
+        self._value = value
+        self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_duration_min"] = value
+        self.async_write_ha_state()
 
 
 class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
