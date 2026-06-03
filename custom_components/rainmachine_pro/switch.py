@@ -320,23 +320,10 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        queue = self.coordinator.data.get("queue", [])
-        # Primary: direct pid match in queue item
-        for item in queue:
+        for item in self.coordinator.data.get("queue", []):
             if item.get("pid") == self._pid and item.get("running"):
                 return True
-        # Fallback: pid may be absent after pause/resume — check if any active zone of this program is running
-        program_zone_ids = {
-            wt["id"]
-            for prog in self.coordinator.data.get("programs", [])
-            if prog["uid"] == self._pid
-            for wt in prog.get("wateringTimes", [])
-            if wt.get("active")
-        }
-        return any(
-            item.get("zid") in program_zone_ids and item.get("running")
-            for item in queue
-        )
+        return False
 
     @property
     def extra_state_attributes(self) -> dict:
