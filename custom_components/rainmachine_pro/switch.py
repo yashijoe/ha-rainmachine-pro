@@ -320,9 +320,9 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        for item in self.coordinator.data.get("queue", []):
-            if item.get("pid") == self._pid and item.get("running"):
-                return True
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog.get("status", 0) == 1
         return False
 
     @property
