@@ -685,6 +685,11 @@ class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
 
     @callback
     def _async_tick(self, now) -> None:
+        # Pick up pause_end_time set by button press before next coordinator poll
+        if self._end_time is None:
+            stored = self.hass.data[DOMAIN].get(f"{self._entry.entry_id}_pause_end_time")
+            if stored is not None:
+                self._end_time = stored
         self.async_write_ha_state()
 
     @callback
@@ -694,7 +699,7 @@ class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
             self._end_time = None
         else:
             self._end_time = stored
-            # If any zone is now running, pause ended externally
+            # Pause ended externally if a zone is now actively running
             if any(item.get("running") for item in self.coordinator.data.get("queue", [])):
                 self._end_time = None
                 self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = None
@@ -707,6 +712,10 @@ class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
         remaining = (self._end_time - datetime.now().astimezone()).total_seconds()
         if remaining <= 0:
             self._end_time = None
+            self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = None
+            # Force immediate refresh so zone/program states update after pause ends
+            self.hass.async_create_task(self.coordinator.async_request_refresh())
+            self.hass.async_create_task(self._slow_coordinator.async_request_refresh())
             return None
         return _seconds_to_mmss(int(remaining))
 
