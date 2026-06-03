@@ -316,7 +316,7 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
             else:
                 user_label, real_label = "scheduled", "actual"
             attrs = {
-                "userDuration": user_dur, "userDuration_unit": "min", "realDuration": real_dur, "realDuration_unit": "min",
+                "userDuration": user_dur, "userDistration_unit": "min", "realDuration": real_dur, "realDuration_unit": "min",
                 "userDuration_display": f"{user_dur} min {user_label}", "realDuration_display": f"{real_dur} min {real_label}",
                 "startTime": cycle.get("startTime"), "flag": flag_map.get(flag, flag_map.get(-1, "No watering")), "icon": "mdi:sprinkler",
             }
@@ -685,7 +685,6 @@ class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
 
     @callback
     def _async_tick(self, now) -> None:
-        # Pick up pause_end_time set by button press before next coordinator poll
         if self._end_time is None:
             stored = self.hass.data[DOMAIN].get(f"{self._entry.entry_id}_pause_end_time")
             if stored is not None:
@@ -701,6 +700,10 @@ class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
             self._end_time = stored
         self.async_write_ha_state()
 
+    @callback
+    def _refresh_slow_after_pause(self, _now=None) -> None:
+        self.hass.async_create_task(self._slow_coordinator.async_request_refresh())
+
     @property
     def native_value(self) -> str | None:
         if self._end_time is None:
@@ -709,9 +712,10 @@ class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
         if remaining <= 0:
             self._end_time = None
             self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = None
-            # Force immediate refresh so zone/program states update after pause ends
             self.hass.async_create_task(self.coordinator.async_request_refresh())
             self.hass.async_create_task(self._slow_coordinator.async_request_refresh())
+            # Delayed refresh: device may need a moment to update program.active after resume
+            self.hass.async_call_later(5, self._refresh_slow_after_pause)
             return None
         return _seconds_to_mmss(int(remaining))
 

@@ -62,20 +62,16 @@ _DURATION_TYPE_LABELS = {
     "es": {"suggested": "sugerida", "custom": "personalizada", "not_set": "no definida"},
 }
 
-# Weekday param is a 10-char binary string (e.g. "0010010010")
-# Positions: 2=Sun, 3=Sat, 4=Fri, 5=Thu, 6=Wed, 7=Tue, 8=Mon; 0,1,9 unused
-_DAY_POS = [8, 7, 6, 5, 4, 3, 2]  # Mon(0)..Sun(6) → string position
+_DAY_POS = [8, 7, 6, 5, 4, 3, 2]
 _DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def _param_to_days(param) -> list:
-    """Decode 10-char binary string param to list of 7 bools [Mon..Sun]."""
     s = str(param).zfill(10)
     return [s[pos] == '1' for pos in _DAY_POS]
 
 
 def _days_to_param(days: list) -> str:
-    """Encode list of 7 bools [Mon..Sun] to 10-char binary string param."""
     chars = ['0'] * 10
     for i, active in enumerate(days):
         chars[_DAY_POS[i]] = '1' if active else '0'
@@ -83,7 +79,6 @@ def _days_to_param(days: list) -> str:
 
 
 def _next_run_with_time(prog: dict) -> str | None:
-    """Combine program nextRun date with startTime."""
     next_run = prog.get("nextRun")
     if not next_run:
         return None
@@ -101,7 +96,6 @@ def _next_run_with_time(prog: dict) -> str | None:
 
 
 def _frequency_label(freq: dict, lang: str = "en") -> str:
-    """Return a translated human-readable label for a program frequency."""
     t = _FREQUENCY_LABELS.get(lang, _FREQUENCY_LABELS["en"])
     ftype = int(freq.get("type", 0))
     param = freq.get("param", "0")
@@ -123,7 +117,6 @@ def _frequency_label(freq: dict, lang: str = "en") -> str:
 
 
 def _zone_planned_seconds(wt: dict, zone_properties: dict) -> int:
-    """Return planned duration in seconds for a wateringTime entry."""
     fixed_dur = wt.get("duration", 0)
     if fixed_dur > 0:
         return fixed_dur
@@ -140,7 +133,6 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up switch entities from a config entry."""
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     entities: list[SwitchEntity] = []
@@ -199,13 +191,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-# ---------------------------------------------------------------------------
-# Zone switches
-# ---------------------------------------------------------------------------
-
 class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
-    """Switch to start/stop a zone."""
-
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:water"
 
@@ -289,8 +275,6 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
 
 class RainMachineZoneEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
-    """Switch to enable/disable a zone."""
-
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:cog"
     _attr_entity_category = EntityCategory.CONFIG
@@ -323,13 +307,7 @@ class RainMachineZoneEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
             _LOGGER.error("Failed to disable zone %s: %s", self._uid, err)
 
 
-# ---------------------------------------------------------------------------
-# Program switches
-# ---------------------------------------------------------------------------
-
 class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
-    """Switch to start/stop a program."""
-
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:water-outline"
 
@@ -342,10 +320,23 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        for item in self.coordinator.data.get("queue", []):
+        queue = self.coordinator.data.get("queue", [])
+        # Primary: direct pid match in queue item
+        for item in queue:
             if item.get("pid") == self._pid and item.get("running"):
                 return True
-        return False
+        # Fallback: pid may be absent after pause/resume — check if any active zone of this program is running
+        program_zone_ids = {
+            wt["id"]
+            for prog in self.coordinator.data.get("programs", [])
+            if prog["uid"] == self._pid
+            for wt in prog.get("wateringTimes", [])
+            if wt.get("active")
+        }
+        return any(
+            item.get("zid") in program_zone_ids and item.get("running")
+            for item in queue
+        )
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -417,8 +408,6 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
 
 
 class RainMachineProgramEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
-    """Switch to enable/disable a program."""
-
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:cog"
     _attr_entity_category = EntityCategory.CONFIG
@@ -452,8 +441,6 @@ class RainMachineProgramEnabledSwitch(RainMachineBaseEntity, SwitchEntity):
 
 
 class RainMachineProgramFrequencyDaySwitch(RainMachineBaseEntity, SwitchEntity):
-    """Switch to toggle a specific weekday for a program's 'Selected days' schedule."""
-
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:calendar-today"
     _attr_entity_category = EntityCategory.CONFIG
@@ -515,8 +502,6 @@ class RainMachineProgramFrequencyDaySwitch(RainMachineBaseEntity, SwitchEntity):
 
 
 class RainMachineProgramWeatherAdaptiveSwitch(RainMachineBaseEntity, SwitchEntity):
-    """Switch to enable/disable weather-adaptive watering for a program."""
-
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:weather-cloudy"
     _attr_entity_category = EntityCategory.CONFIG
@@ -550,8 +535,6 @@ class RainMachineProgramWeatherAdaptiveSwitch(RainMachineBaseEntity, SwitchEntit
 
 
 class RainMachineProgramAdaptiveFrequencySwitch(RainMachineBaseEntity, SwitchEntity):
-    """Switch to enable/disable adaptive watering frequency for a program."""
-
     _attr_device_class = SwitchDeviceClass.SWITCH
     _attr_icon = "mdi:chart-timeline-variant"
     _attr_entity_category = EntityCategory.CONFIG
@@ -584,13 +567,7 @@ class RainMachineProgramAdaptiveFrequencySwitch(RainMachineBaseEntity, SwitchEnt
             _LOGGER.error("Failed to disable adaptive frequency for program %s: %s", self._pid, err)
 
 
-# ---------------------------------------------------------------------------
-# Global switches
-# ---------------------------------------------------------------------------
-
 class RainMachineFreezeProtectionSwitch(RainMachineBaseEntity, SwitchEntity):
-    """Switch for freeze protection."""
-
     _attr_name = "Freeze protection"
     _attr_icon = "mdi:snowflake"
     _attr_entity_category = EntityCategory.CONFIG
@@ -621,8 +598,6 @@ class RainMachineFreezeProtectionSwitch(RainMachineBaseEntity, SwitchEntity):
 
 
 class RainMachineExtraWaterSwitch(RainMachineBaseEntity, SwitchEntity):
-    """Switch for extra water on hot days."""
-
     _attr_name = "Extra water on hot days"
     _attr_icon = "mdi:thermometer-water"
     _attr_entity_category = EntityCategory.CONFIG
