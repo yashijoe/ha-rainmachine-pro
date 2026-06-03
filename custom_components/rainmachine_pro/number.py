@@ -1,6 +1,7 @@
 """Number platform for RainMachine Pro."""
 
 import logging
+from datetime import datetime, timedelta
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
@@ -32,8 +33,6 @@ async def async_setup_entry(
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
     zones_config = entry.options.get(CONF_ZONES, {})
-
-    hass.data[DOMAIN].setdefault(f"{entry.entry_id}_pause_duration_min", 0.0)
 
     entities = [
         RainMachineRainDelayNumber(coordinator, entry),
@@ -129,7 +128,7 @@ class RainMachineRainDelayNumber(CoordinatorEntity, NumberEntity):
 
 
 class RainMachinePauseDurationNumber(CoordinatorEntity, NumberEntity):
-    """Number entity: pause duration in minutes (0 = cancel/no pause)."""
+    """Number entity: pause duration in minutes. Setting >0 starts pause; 0 cancels it."""
 
     _attr_has_entity_name = True
     _attr_name = "Pause duration"
@@ -156,8 +155,19 @@ class RainMachinePauseDurationNumber(CoordinatorEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         self._value = value
-        self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_duration_min"] = value
         self.async_write_ha_state()
+        duration_sec = int(value * 60)
+        try:
+            await self.coordinator.client.action_pause_watering(duration_sec)
+            if duration_sec > 0:
+                end_time = datetime.now().astimezone() + timedelta(seconds=duration_sec)
+                self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = end_time
+                _LOGGER.info("Watering paused for %d seconds", duration_sec)
+            else:
+                self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = None
+                _LOGGER.info("Watering pause cancelled")
+        except Exception as err:
+            _LOGGER.error("Failed to pause watering: %s", err)
 
 
 class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
