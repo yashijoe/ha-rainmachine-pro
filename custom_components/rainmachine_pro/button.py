@@ -1,6 +1,7 @@
 """Button platform for RainMachine Pro."""
 
 import logging
+from datetime import datetime, timedelta
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
@@ -24,7 +25,10 @@ async def async_setup_entry(
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
 
-    entities = [RainMachineRebootButton(coordinator, entry)]
+    entities = [
+        RainMachineRebootButton(coordinator, entry),
+        RainMachinePauseButton(coordinator, entry),
+    ]
 
     for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
@@ -54,6 +58,34 @@ class RainMachineRebootButton(RainMachineBaseEntity, ButtonEntity):
             _LOGGER.info("RainMachine reboot initiated")
         except Exception as err:
             _LOGGER.error("Failed to reboot RainMachine: %s", err)
+
+
+class RainMachinePauseButton(RainMachineBaseEntity, ButtonEntity):
+    """Button to pause all watering (duration from number entity; 0 cancels pause)."""
+
+    _attr_name = "Pause watering"
+    _attr_icon = "mdi:pause-circle"
+
+    def __init__(self, coordinator: RainMachineProCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_pause_watering"
+
+    async def async_press(self) -> None:
+        duration_min = float(
+            self.hass.data[DOMAIN].get(f"{self._entry.entry_id}_pause_duration_min", 0.0)
+        )
+        duration_sec = int(duration_min * 60)
+        try:
+            await self.coordinator.client.action_pause_watering(duration_sec)
+            if duration_sec > 0:
+                end_time = datetime.now().astimezone() + timedelta(seconds=duration_sec)
+                self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = end_time
+                _LOGGER.info("Watering paused for %d seconds", duration_sec)
+            else:
+                self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = None
+                _LOGGER.info("Watering pause cancelled")
+        except Exception as err:
+            _LOGGER.error("Failed to pause watering: %s", err)
 
 
 class RainMachineProgramIncreaseButton(RainMachineBaseEntity, ButtonEntity):
