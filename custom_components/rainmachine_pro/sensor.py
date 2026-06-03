@@ -605,7 +605,7 @@ class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub_timer:
-            self._unsub_timer()            
+            self._unsub_timer()
             self._unsub_timer = None
 
     @callback
@@ -699,10 +699,6 @@ class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
             self._end_time = None
         else:
             self._end_time = stored
-            # Pause ended externally if a zone is now actively running
-            if any(item.get("running") for item in self.coordinator.data.get("queue", [])):
-                self._end_time = None
-                self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = None
         self.async_write_ha_state()
 
     @property
