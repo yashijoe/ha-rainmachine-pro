@@ -84,6 +84,10 @@ class RainMachinePauseButton(RainMachineBaseEntity, ButtonEntity):
             else:
                 self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = None
                 _LOGGER.info("Watering pause cancelled")
+            fast_coord = self.hass.data[DOMAIN].get(f"{self._entry.entry_id}_fast")
+            if fast_coord:
+                await fast_coord.async_request_refresh()
+            await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to pause watering: %s", err)
 
