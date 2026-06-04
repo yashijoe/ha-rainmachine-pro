@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import ssl
+from datetime import date, timedelta
 
 import aiohttp
 
@@ -113,6 +114,11 @@ class RainMachineClient:
 
     async def get_watering_details(self, session: aiohttp.ClientSession) -> dict:
         return await self._get(session, "watering/log/details")
+
+    async def get_watering_details_yesterday(self, session: aiohttp.ClientSession) -> dict:
+        """Fetch watering log details for yesterday only."""
+        yesterday = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+        return await self._get(session, f"watering/log/details/{yesterday}/1")
 
     async def get_forecast(self, session: aiohttp.ClientSession) -> dict:
         return await self._get(session, "mixer", query="format=json")
@@ -252,16 +258,7 @@ class RainMachineClient:
     async def action_adjust_program_durations(
         self, pid: int, direction: int, zone_properties: dict
     ) -> dict:
-        """Adjust all active zone durations by +-5% of WaterSense referenceTime.
-
-        direction: +1 to increase, -1 to decrease.
-        For custom zones (duration>0): current_pct derived from duration/referenceTime.
-        For suggested zones (duration==0): current_pct from stored userPercentage.
-        All zones: new_pct = clamp(current_pct + direction*0.05, 0.05, 2.0).
-        Custom zones: also update duration = round(referenceTime * new_pct).
-        round() used instead of int() to minimise roundtrip error.
-        Zones without referenceTime are skipped.
-        """
+        """Adjust all active zone durations by +-5% of WaterSense referenceTime."""
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
@@ -337,6 +334,7 @@ class RainMachineClient:
                 ("parsers",                  self.get_parsers(session)),
                 ("watering",                 self.get_watering_today(session)),
                 ("details",                  self.get_watering_details(session)),
+                ("watering_yesterday",       self.get_watering_details_yesterday(session)),
                 ("forecast",                 self.get_forecast(session)),
                 ("raindelay",                self.get_rain_delay(session)),
                 ("zones",                    self.get_zones(session)),

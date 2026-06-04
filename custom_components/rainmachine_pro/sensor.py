@@ -129,7 +129,7 @@ async def async_setup_entry(
     for i in range(7):
         entities.append(RainMachineForecastSensor(coordinator, entry, i))
 
-    # Irrigation forecast: 7 sensors per enabled program
+    # Irrigation sensors: yesterday (-1) + 7-day forecast (0-6) per enabled program
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
     for program in coordinator.data.get("programs", []):
         pid = program["uid"]
@@ -137,7 +137,7 @@ async def async_setup_entry(
         if not prog_cfg.get("enabled", True):
             continue
         prog_name = prog_cfg.get("name") or program.get("name", f"Program {pid}")
-        for i in range(7):
+        for i in [-1] + list(range(7)):
             entities.append(
                 RainMachineIrrigationForecastSensor(coordinator, entry, pid, prog_name, i)
             )
@@ -500,7 +500,7 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
 
 
 class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
-    """Sensor: per-program irrigation forecast for a specific day (from dailystats/details)."""
+    """Sensor: per-program irrigation data. Index -1=yesterday actual, 0-6=forecast."""
 
     _attr_icon = "mdi:sprinkler"
     _attr_native_unit_of_measurement = "s"
@@ -511,9 +511,25 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
         self._pid = pid
         self._program_name = program_name
         self._index = index
-        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_irrigation_forecast_{index}"
+        index_str = "y" if index == -1 else str(index)
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_irrigation_forecast_{index_str}"
         suffix = re.sub(r"[^a-z0-9]+", "_", program_name.lower()).strip("_")
-        self.entity_id = f"sensor.rainmachine_{suffix}_irrigation_forecast_{index}"
+        self.entity_id = f"sensor.rainmachine_{suffix}_irrigation_forecast_{index_str}"
+
+    # ---- yesterday helpers (index == -1) ----
+
+    def _get_yesterday_program(self) -> dict | None:
+        """Find this program's data in yesterday's watering log."""
+        watering = self.coordinator.data.get("watering_yesterday", {})
+        days = watering.get("waterLog", {}).get("days", [])
+        if not days:
+            return None
+        for prog in days[0].get("programs", []):
+            if prog.get("id") == self._pid:
+                return prog
+        return None
+
+    # ---- forecast helpers (index 0-6) ----
 
     def _get_day_data(self) -> tuple[dict | None, int]:
         details = self.coordinator.data.get("dailystats_details", [])
@@ -533,13 +549,28 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
                 return prog.get("zones", [])
         return []
 
+    # ---- common ----
+
     @property
     def name(self) -> str:
+        lang = self._get_lang()
+        if self._index == -1:
+            return f"{self._program_name} {_day_label(lang, -1)}"
         _, delta = self._get_day_data()
-        return f"{self._program_name} {_day_label(self._get_lang(), delta)}"
+        return f"{self._program_name} {_day_label(lang, delta)}"
 
     @property
     def native_value(self) -> float | None:
+        if self._index == -1:
+            prog = self._get_yesterday_program()
+            if prog is None:
+                return None
+            total = sum(
+                cycle.get("realDuration", 0)
+                for zone in prog.get("zones", [])
+                for cycle in zone.get("cycles", [])
+            )
+            return round(total, 1)
         day, _ = self._get_day_data()
         if day is None:
             return None
@@ -550,13 +581,38 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
+        lang = self._get_lang()
+        flag_labels = FLAG_MAP.get(lang, FLAG_MAP["en"])
+        zones_cfg = self._entry.options.get(CONF_ZONES, {})
+
+        if self._index == -1:
+            prog = self._get_yesterday_program()
+            if prog is None:
+                return {}
+            from datetime import date, timedelta as td
+            yesterday_str = (date.today() - td(days=1)).strftime("%Y-%m-%d")
+            attrs = {"day": yesterday_str}
+            total_real = 0
+            total_user = 0
+            for zone in prog.get("zones", []):
+                zid = zone.get("uid")
+                z_name = zones_cfg.get(str(zid), {}).get("name") or f"Zone {zid}"
+                real_dur = sum(c.get("realDuration", 0) for c in zone.get("cycles", []))
+                user_dur = sum(c.get("userDuration", 0) for c in zone.get("cycles", []))
+                flag_val = zone.get("flag")
+                attrs[f"{z_name}_real_sec"] = round(real_dur, 1)
+                attrs[f"{z_name}_user_sec"] = round(user_dur, 1)
+                attrs[f"{z_name}_watering_flag"] = flag_labels.get(flag_val, str(flag_val) if flag_val is not None else None)
+                total_real += real_dur
+                total_user += user_dur
+            attrs["real_sec"] = round(total_real, 1)
+            attrs["user_sec"] = round(total_user, 1)
+            return attrs
+
         day, delta = self._get_day_data()
         if day is None:
             return {}
         zones = self._get_zones(day)
-        zones_cfg = self._entry.options.get(CONF_ZONES, {})
-        lang = self._get_lang()
-        flag_labels = FLAG_MAP.get(lang, FLAG_MAP["en"])
         attrs = {
             "day": day.get("day"),
             "scheduled_sec": round(sum(z.get("scheduledWateringTime", 0) for z in zones), 1),
@@ -692,7 +748,7 @@ class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub_timer:
-            self._unsub_timer()            
+            self._unsub_timer()
             self._unsub_timer = None
 
     @callback
