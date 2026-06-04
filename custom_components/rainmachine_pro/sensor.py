@@ -503,7 +503,7 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
     """Sensor: per-program irrigation forecast for a specific day (from dailystats/details)."""
 
     _attr_icon = "mdi:sprinkler"
-    _attr_native_unit_of_measurement = "min"
+    _attr_native_unit_of_measurement = "s"
     _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator, entry, pid: int, program_name: str, index: int) -> None:
@@ -546,8 +546,7 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
         zones = self._get_zones(day)
         if not zones:
             return None
-        total_sec = sum(z.get("scheduledWateringTime", 0) for z in zones)
-        return round(total_sec / 60, 1)
+        return round(sum(z.get("scheduledWateringTime", 0) for z in zones), 1)
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -560,15 +559,15 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
         flag_labels = FLAG_MAP.get(lang, FLAG_MAP["en"])
         attrs = {
             "day": day.get("day"),
-            "scheduled_min": round(sum(z.get("scheduledWateringTime", 0) for z in zones) / 60, 1),
-            "computed_min": round(sum(z.get("computedWateringTime", 0) for z in zones) / 60, 1),
+            "scheduled_sec": round(sum(z.get("scheduledWateringTime", 0) for z in zones), 1),
+            "computed_sec": round(sum(z.get("computedWateringTime", 0) for z in zones), 1),
         }
         for z in zones:
             zid = z.get("id")
             z_name = zones_cfg.get(str(zid), {}).get("name") or f"Zone {zid}"
             flag_val = z.get("wateringFlag")
-            attrs[f"{z_name}_scheduled_min"] = round(z.get("scheduledWateringTime", 0) / 60, 1)
-            attrs[f"{z_name}_computed_min"] = round(z.get("computedWateringTime", 0) / 60, 1)
+            attrs[f"{z_name}_scheduled_sec"] = round(z.get("scheduledWateringTime", 0), 1)
+            attrs[f"{z_name}_computed_sec"] = round(z.get("computedWateringTime", 0), 1)
             attrs[f"{z_name}_available_water"] = round(z.get("availableWater", 0), 2)
             attrs[f"{z_name}_percentage"] = z.get("percentage", 0)
             attrs[f"{z_name}_watering_flag"] = flag_labels.get(flag_val, str(flag_val) if flag_val is not None else None)
@@ -693,7 +692,7 @@ class RainMachineProgramRunCountdown(RainMachineBaseEntity, SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub_timer:
-            self._unsub_timer()
+            self._unsub_timer()            
             self._unsub_timer = None
 
     @callback
