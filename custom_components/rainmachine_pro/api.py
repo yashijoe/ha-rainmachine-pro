@@ -149,6 +149,11 @@ class RainMachineClient:
         data = await self._get(session, "zone/properties")
         return {z["uid"]: z for z in data.get("zones", [])}
 
+    async def get_daily_stats_details(self, session: aiohttp.ClientSession) -> list:
+        """Fetch 7-day irrigation forecast per program/zone."""
+        data = await self._get(session, "dailystats/details")
+        return data.get("DailyStatsDetails", [])
+
     # -------------------------------------------------------------------------
     # Action methods
     # -------------------------------------------------------------------------
@@ -327,6 +332,7 @@ class RainMachineClient:
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             data = {}
+            _LIST_KEYS = {"parsers", "zones", "programs", "queue", "dailystats_details"}
             for key, coro in [
                 ("parsers",                  self.get_parsers(session)),
                 ("watering",                 self.get_watering_today(session)),
@@ -341,10 +347,11 @@ class RainMachineClient:
                 ("provision",                self.get_provision(session)),
                 ("machine_update",           self.get_machine_update(session)),
                 ("zone_properties",          self.get_zone_properties(session)),
+                ("dailystats_details",       self.get_daily_stats_details(session)),
             ]:
                 try:
                     data[key] = await coro
                 except RainMachineApiError as err:
                     _LOGGER.warning("Failed to fetch %s: %s", key, err)
-                    data[key] = {} if key not in ("parsers", "zones", "programs", "queue") else []
+                    data[key] = [] if key in _LIST_KEYS else {}
             return data

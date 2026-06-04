@@ -61,6 +61,29 @@ def _sum_details_today(data: dict, field: str) -> int:
     return 0
 
 
+def _day_label(lang: str, delta: int) -> str:
+    relative_map = {
+        "it": {-1: "Ieri", 0: "Oggi", 1: "Domani"},
+        "de": {-1: "Gestern", 0: "Heute", 1: "Morgen"},
+        "fr": {-1: "Hier", 0: "Aujourd'hui", 1: "Demain"},
+        "es": {-1: "Ayer", 0: "Hoy", 1: "Mañana"},
+        "en": {-1: "Yesterday", 0: "Today", 1: "Tomorrow"},
+    }
+    day_names_map = {
+        "it": {0: "Lunedì", 1: "Martedì", 2: "Mercoledì", 3: "Giovedì", 4: "Venerdì", 5: "Sabato", 6: "Domenica"},
+        "de": {0: "Montag", 1: "Dienstag", 2: "Mittwoch", 3: "Donnerstag", 4: "Freitag", 5: "Samstag", 6: "Sonntag"},
+        "fr": {0: "Lundi", 1: "Mardi", 2: "Mercredi", 3: "Jeudi", 4: "Vendredi", 5: "Samedi", 6: "Dimanche"},
+        "es": {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"},
+        "en": {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"},
+    }
+    relatives = relative_map.get(lang, relative_map["en"])
+    if delta in relatives:
+        return relatives[delta]
+    day_names = day_names_map.get(lang, day_names_map["en"])
+    target = datetime.today().date() + timedelta(days=delta)
+    return day_names.get(target.weekday(), str(target))
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -106,9 +129,21 @@ async def async_setup_entry(
     for i in range(7):
         entities.append(RainMachineForecastSensor(coordinator, entry, i))
 
+    # Irrigation forecast: 7 sensors per enabled program
+    enabled_programs = entry.options.get(CONF_PROGRAMS, {})
+    for program in coordinator.data.get("programs", []):
+        pid = program["uid"]
+        prog_cfg = enabled_programs.get(str(pid), {})
+        if not prog_cfg.get("enabled", True):
+            continue
+        prog_name = prog_cfg.get("name") or program.get("name", f"Program {pid}")
+        for i in range(7):
+            entities.append(
+                RainMachineIrrigationForecastSensor(coordinator, entry, pid, prog_name, i)
+            )
+
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     enabled_zones_cfg = entry.options.get(CONF_ZONES, {})
-    enabled_programs = entry.options.get(CONF_PROGRAMS, {})
 
     for zone in fast_coordinator.data.get("zones", []):
         uid = zone["uid"]
@@ -316,7 +351,7 @@ class RainMachineZoneSensor(RainMachineBaseEntity, SensorEntity):
             else:
                 user_label, real_label = "scheduled", "actual"
             attrs = {
-                "userDuration": user_dur, "userDistration_unit": "min", "realDuration": real_dur, "realDuration_unit": "min",
+                "userDuration": user_dur, "userDuration_unit": "min", "realDuration": real_dur, "realDuration_unit": "min",
                 "userDuration_display": f"{user_dur} min {user_label}", "realDuration_display": f"{real_dur} min {real_label}",
                 "startTime": cycle.get("startTime"), "flag": flag_map.get(flag, flag_map.get(-1, "No watering")), "icon": "mdi:sprinkler",
             }
@@ -409,33 +444,10 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
             return data, delta
         return None, 0
 
-    def _get_day_label(self, delta: int) -> str:
-        lang = self._get_lang()
-        day_names_map = {
-            "it": {0: "Lunedì", 1: "Martedì", 2: "Mercoledì", 3: "Giovedì", 4: "Venerdì", 5: "Sabato", 6: "Domenica"},
-            "de": {0: "Montag", 1: "Dienstag", 2: "Mittwoch", 3: "Donnerstag", 4: "Freitag", 5: "Samstag", 6: "Sonntag"},
-            "fr": {0: "Lundi", 1: "Mardi", 2: "Mercredi", 3: "Jeudi", 4: "Vendredi", 5: "Samedi", 6: "Dimanche"},
-            "es": {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"},
-            "en": {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"},
-        }
-        relative_map = {
-            "it": {-1: "Ieri", 0: "Oggi", 1: "Domani"},
-            "de": {-1: "Gestern", 0: "Heute", 1: "Morgen"},
-            "fr": {-1: "Hier", 0: "Aujourd'hui", 1: "Demain"},
-            "es": {-1: "Ayer", 0: "Hoy", 1: "Mañana"},
-            "en": {-1: "Yesterday", 0: "Today", 1: "Tomorrow"},
-        }
-        relatives = relative_map.get(lang, relative_map["en"])
-        if delta in relatives:
-            return relatives[delta]
-        day_names = day_names_map.get(lang, day_names_map["en"])
-        target = datetime.today().date() + timedelta(days=delta)
-        return day_names.get(target.weekday(), str(target))
-
     @property
     def name(self):
         _, delta = self._get_forecast_day()
-        return self._get_day_label(delta)
+        return _day_label(self._get_lang(), delta)
 
     @property
     def native_value(self):
@@ -482,9 +494,82 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
             "EvapoTranspiration": data.get("et0final", 0), "EvapoTranspiration_unit": "mm",
             "EvapoTranspiration_display": f"{data.get('et0final', 0)} mm",
             "day": data.get("day", "").split(" ")[0], "meteocode": code,
-            "friendly_name": self._get_day_label(delta), "state_translated": state_translated,
+            "friendly_name": _day_label(lang, delta), "state_translated": state_translated,
             "icon": f"mdi:weather-{condition}",
         }
+
+
+class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
+    """Sensor: per-program irrigation forecast for a specific day (from dailystats/details)."""
+
+    _attr_icon = "mdi:sprinkler"
+    _attr_native_unit_of_measurement = "min"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str, index: int) -> None:
+        super().__init__(coordinator, entry)
+        self._pid = pid
+        self._program_name = program_name
+        self._index = index
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_irrigation_forecast_{index}"
+        suffix = re.sub(r"[^a-z0-9]+", "_", program_name.lower()).strip("_")
+        self.entity_id = f"sensor.rainmachine_{suffix}_irrigation_forecast_{index}"
+
+    def _get_day_data(self) -> tuple[dict | None, int]:
+        details = self.coordinator.data.get("dailystats_details", [])
+        if not details or self._index >= len(details):
+            return None, 0
+        day = details[self._index]
+        try:
+            day_date = datetime.strptime(day["day"], "%Y-%m-%d").date()
+            delta = (day_date - datetime.today().date()).days
+        except (KeyError, ValueError):
+            delta = self._index
+        return day, delta
+
+    def _get_zones(self, day: dict) -> list:
+        for prog in day.get("programs", []):
+            if prog.get("id") == self._pid:
+                return prog.get("zones", [])
+        return []
+
+    @property
+    def name(self) -> str:
+        _, delta = self._get_day_data()
+        return f"{self._program_name} {_day_label(self._get_lang(), delta)}"
+
+    @property
+    def native_value(self) -> float | None:
+        day, _ = self._get_day_data()
+        if day is None:
+            return None
+        zones = self._get_zones(day)
+        if not zones:
+            return None
+        total_sec = sum(z.get("scheduledWateringTime", 0) for z in zones)
+        return round(total_sec / 60, 1)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        day, delta = self._get_day_data()
+        if day is None:
+            return {}
+        zones = self._get_zones(day)
+        zones_cfg = self._entry.options.get(CONF_ZONES, {})
+        attrs = {
+            "day": day.get("day"),
+            "scheduled_min": round(sum(z.get("scheduledWateringTime", 0) for z in zones) / 60, 1),
+            "computed_min": round(sum(z.get("computedWateringTime", 0) for z in zones) / 60, 1),
+        }
+        for z in zones:
+            zid = z.get("id")
+            z_name = zones_cfg.get(str(zid), {}).get("name") or f"Zone {zid}"
+            attrs[f"{z_name}_scheduled_min"] = round(z.get("scheduledWateringTime", 0) / 60, 1)
+            attrs[f"{z_name}_computed_min"] = round(z.get("computedWateringTime", 0) / 60, 1)
+            attrs[f"{z_name}_available_water"] = round(z.get("availableWater", 0), 2)
+            attrs[f"{z_name}_percentage"] = z.get("percentage", 0)
+            attrs[f"{z_name}_watering_flag"] = z.get("wateringFlag")
+        return attrs
 
 
 # ---------------------------------------------------------------------------
@@ -714,7 +799,6 @@ class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
             self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_end_time"] = None
             self.hass.async_create_task(self.coordinator.async_request_refresh())
             self.hass.async_create_task(self._slow_coordinator.async_request_refresh())
-            # Delayed refresh: device may need a moment to update program.active after resume
             self.hass.async_call_later(5, self._refresh_slow_after_pause)
             return None
         return _seconds_to_mmss(int(remaining))
