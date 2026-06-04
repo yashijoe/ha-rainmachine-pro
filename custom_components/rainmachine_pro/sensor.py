@@ -2,6 +2,7 @@
 
 import logging
 import re
+from datetime import date as date_cls
 from datetime import datetime, timedelta, timezone
 
 from homeassistant.components.sensor import (
@@ -518,16 +519,39 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
 
     # ---- yesterday helpers (index == -1) ----
 
-    def _get_yesterday_program(self) -> dict | None:
-        """Find this program's data in yesterday's watering log."""
+    def _get_yesterday_zones_by_uid(self) -> dict:
+        """Aggregate ALL watering log entries for yesterday by zone uid.
+
+        Sums realDuration and userDuration across every program entry (id=0
+        manual runs and id=N program runs) so the sensor reflects all irrigation
+        that actually happened, regardless of trigger source.
+        """
         watering = self.coordinator.data.get("watering_yesterday", {})
         days = watering.get("waterLog", {}).get("days", [])
         if not days:
-            return None
+            return {}
+        zones_by_uid: dict[int, dict] = {}
         for prog in days[0].get("programs", []):
-            if prog.get("id") == self._pid:
-                return prog
-        return None
+            for zone in prog.get("zones", []):
+                uid = zone.get("uid")
+                if uid is None:
+                    continue
+                if uid not in zones_by_uid:
+                    zones_by_uid[uid] = {"real": 0.0, "user": 0.0, "last_flag": None}
+                for cycle in zone.get("cycles", []):
+                    zones_by_uid[uid]["real"] += cycle.get("realDuration", 0)
+                    zones_by_uid[uid]["user"] += cycle.get("userDuration", 0)
+                flag = zone.get("flag")
+                if flag is not None:
+                    zones_by_uid[uid]["last_flag"] = flag
+        return zones_by_uid
+
+    def _get_program_zone_ids(self) -> set:
+        """Return set of active zone uids for this program."""
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return {wt["id"] for wt in prog.get("wateringTimes", []) if wt.get("active")}
+        return set()
 
     # ---- forecast helpers (index 0-6) ----
 
@@ -562,15 +586,16 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         if self._index == -1:
-            prog = self._get_yesterday_program()
-            if prog is None:
+            zones_data = self._get_yesterday_zones_by_uid()
+            prog_zone_ids = self._get_program_zone_ids()
+            if not zones_data and not prog_zone_ids:
                 return None
-            total = sum(
-                cycle.get("realDuration", 0)
-                for zone in prog.get("zones", [])
-                for cycle in zone.get("cycles", [])
+            total_user = sum(
+                zones_data[uid]["user"]
+                for uid in prog_zone_ids
+                if uid in zones_data
             )
-            return round(total, 1)
+            return round(total_user, 1)
         day, _ = self._get_day_data()
         if day is None:
             return None
@@ -586,27 +611,25 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
         zones_cfg = self._entry.options.get(CONF_ZONES, {})
 
         if self._index == -1:
-            prog = self._get_yesterday_program()
-            if prog is None:
-                return {}
-            from datetime import date, timedelta as td
-            yesterday_str = (date.today() - td(days=1)).strftime("%Y-%m-%d")
-            attrs = {"day": yesterday_str}
-            total_real = 0
-            total_user = 0
-            for zone in prog.get("zones", []):
-                zid = zone.get("uid")
-                z_name = zones_cfg.get(str(zid), {}).get("name") or f"Zone {zid}"
-                real_dur = sum(c.get("realDuration", 0) for c in zone.get("cycles", []))
-                user_dur = sum(c.get("userDuration", 0) for c in zone.get("cycles", []))
-                flag_val = zone.get("flag")
-                attrs[f"{z_name}_real_sec"] = round(real_dur, 1)
-                attrs[f"{z_name}_user_sec"] = round(user_dur, 1)
-                attrs[f"{z_name}_watering_flag"] = flag_labels.get(flag_val, str(flag_val) if flag_val is not None else None)
-                total_real += real_dur
-                total_user += user_dur
-            attrs["real_sec"] = round(total_real, 1)
-            attrs["user_sec"] = round(total_user, 1)
+            zones_data = self._get_yesterday_zones_by_uid()
+            prog_zone_ids = self._get_program_zone_ids()
+            yesterday_str = (date_cls.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+            total_user = sum(zones_data.get(uid, {}).get("user", 0) for uid in prog_zone_ids)
+            total_real = sum(zones_data.get(uid, {}).get("real", 0) for uid in prog_zone_ids)
+            attrs = {
+                "day": yesterday_str,
+                "scheduled_sec": round(total_user, 1),
+                "computed_sec": round(total_real, 1),
+            }
+            for uid in sorted(prog_zone_ids):
+                z_name = zones_cfg.get(str(uid), {}).get("name") or f"Zone {uid}"
+                z = zones_data.get(uid, {"user": 0, "real": 0, "last_flag": None})
+                flag_val = z["last_flag"]
+                attrs[f"{z_name}_scheduled_sec"] = round(z["user"], 1)
+                attrs[f"{z_name}_computed_sec"] = round(z["real"], 1)
+                attrs[f"{z_name}_watering_flag"] = flag_labels.get(
+                    flag_val, str(flag_val) if flag_val is not None else None
+                )
             return attrs
 
         day, delta = self._get_day_data()
@@ -626,7 +649,9 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
             attrs[f"{z_name}_computed_sec"] = round(z.get("computedWateringTime", 0), 1)
             attrs[f"{z_name}_available_water"] = round(z.get("availableWater", 0), 2)
             attrs[f"{z_name}_percentage"] = z.get("percentage", 0)
-            attrs[f"{z_name}_watering_flag"] = flag_labels.get(flag_val, str(flag_val) if flag_val is not None else None)
+            attrs[f"{z_name}_watering_flag"] = flag_labels.get(
+                flag_val, str(flag_val) if flag_val is not None else None
+            )
         return attrs
 
 
