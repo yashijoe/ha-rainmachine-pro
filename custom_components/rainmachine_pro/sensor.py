@@ -556,6 +556,8 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
             return {}
         zones = self._get_zones(day)
         zones_cfg = self._entry.options.get(CONF_ZONES, {})
+        lang = self._get_lang()
+        flag_labels = FLAG_MAP.get(lang, FLAG_MAP["en"])
         attrs = {
             "day": day.get("day"),
             "scheduled_min": round(sum(z.get("scheduledWateringTime", 0) for z in zones) / 60, 1),
@@ -564,11 +566,12 @@ class RainMachineIrrigationForecastSensor(RainMachineBaseEntity, SensorEntity):
         for z in zones:
             zid = z.get("id")
             z_name = zones_cfg.get(str(zid), {}).get("name") or f"Zone {zid}"
+            flag_val = z.get("wateringFlag")
             attrs[f"{z_name}_scheduled_min"] = round(z.get("scheduledWateringTime", 0) / 60, 1)
             attrs[f"{z_name}_computed_min"] = round(z.get("computedWateringTime", 0) / 60, 1)
             attrs[f"{z_name}_available_water"] = round(z.get("availableWater", 0), 2)
             attrs[f"{z_name}_percentage"] = z.get("percentage", 0)
-            attrs[f"{z_name}_watering_flag"] = z.get("wateringFlag")
+            attrs[f"{z_name}_watering_flag"] = flag_labels.get(flag_val, str(flag_val) if flag_val is not None else None)
         return attrs
 
 
