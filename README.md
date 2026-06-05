@@ -17,6 +17,8 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Program duration adjustment** — per-program +/− buttons adjust all active zone durations by a fixed 5% of each zone's WaterSense reference time; works for both suggested and custom zones
 - **Run countdown** — per-zone and per-program sensors showing remaining time as `M:SS` during active watering; works for both scheduled and manual runs
 - **Pause watering** — pause all active watering for a configurable duration (1–720 minutes) with a live countdown sensor; cancellable by setting duration to 0
+- **Irrigation forecast** — 8 sensors per enabled program: yesterday's actual irrigation and a 7-day forecast (days 0–6), each with scheduled and computed seconds per zone
+- **Per-zone manual irrigation** — per-zone configurable duration (0.5–300 min) and a start button to immediately run that zone for the set duration
 - **Editable program start time** — set each program's scheduled start time directly from Home Assistant
 - **Editable program frequency** — set each program's irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
 - **Weather adaptive watering** — per-program switch to enable/disable the use of internet weather data for adaptive watering
@@ -87,6 +89,8 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `sensor.<zone>_run_countdown` | Remaining time for currently running zone (`M:SS`); `null` when idle | — | — |
 | `sensor.<program>_run_countdown` | Remaining time for currently running program (`M:SS`); `null` when idle | — | — |
 | `sensor.rainmachine_pause_countdown` | Live countdown of remaining pause time as `M:SS`; `null` when not paused or when a zone starts running | — | — |
+| `sensor.rainmachine_<program>_irrigation_forecast_y` | Yesterday's actual irrigation for the program (total `userDuration` in seconds) | — | — |
+| `sensor.rainmachine_<program>_irrigation_forecast_0` … `_6` | 7-day irrigation forecast for the program (day 0 = today … day 6); state = total `scheduledWateringTime` in seconds | — | — |
 
 ### Binary Sensors
 
@@ -123,6 +127,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `number.<program>_<zone>_custom_duration` | Custom duration for a zone in a program (config category) | 0.5–299.5 min, step 0.5 |
 | `number.<program>_<zone>_watering_percentage` | WaterSense `userPercentage` for a zone in a program (config category) | 10–200%, step 5% |
 | `number.rainmachine_pause_duration` | Pause duration in minutes; set to 0 to cancel an active pause | 0–720 min, step 1 |
+| `number.<zone>_manual_duration` | Duration for the next manual zone run | 0.5–300 min, step 0.5, default 10 min |
 
 ### Button
 
@@ -132,6 +137,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `button.<program_name>_increase_duration` | Increase all active zone durations by 5% of each zone's WaterSense reference time |
 | `button.<program_name>_decrease_duration` | Decrease all active zone durations by 5% of each zone's WaterSense reference time |
 | `button.rainmachine_pause_watering` | Send a pause command using the duration configured in `number.rainmachine_pause_duration` |
+| `button.<zone>_start_manual` | Start the zone for the duration set in `number.<zone>_manual_duration`; triggers a zone run countdown |
 
 ### Select
 
@@ -191,6 +197,14 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `days_remaining` / `hours_remaining` / `minutes_remaining` / `seconds_remaining`
 - `ends_at`
 
+**Irrigation forecast sensors** include (per zone, localized attribute names):
+
+- `scheduled_sec` — total scheduled seconds for the program on that day
+- `computed_sec` — total computed seconds for the program on that day
+- `<zone>_scheduled_sec` — scheduled seconds for that zone
+- `<zone>_computed_sec` — computed seconds for that zone
+- `<zone>_watering_flag` — watering flag for that zone (localized)
+
 ## Run Countdown
 
 Each HA-enabled zone and each enabled program exposes a countdown sensor (diagnostic category, enabled by default):
@@ -215,6 +229,37 @@ Three entities work together to pause and monitor all active irrigation:
 2. Press `button.rainmachine_pause_watering`.
 3. Monitor `sensor.rainmachine_pause_countdown` to track remaining pause time.
 4. To cancel early, set `number.rainmachine_pause_duration` to `0` and press the button again, or simply start a zone/program.
+
+## Irrigation Forecast
+
+For each enabled program, 8 sensors expose irrigation forecast data — one for yesterday's actual run and one for each of the next 7 days:
+
+- **`sensor.rainmachine_<program>_irrigation_forecast_y`** — yesterday's actual irrigation. State = total scheduled seconds (`userDuration`). Source: `/api/4/watering/log/details`.
+- **`sensor.rainmachine_<program>_irrigation_forecast_0`** … **`_6`** — 7-day irrigation forecast (day 0 = today, day 6 = six days from now). State = total `scheduledWateringTime` in seconds. Source: `/api/4/dailystats/details`.
+
+All 8 sensors share the same attribute structure, with values per zone (localized attribute names):
+
+| Attribute | Description |
+|-----------|-------------|
+| `scheduled_sec` | Total scheduled seconds for the program on that day |
+| `computed_sec` | Total computed (weather-adjusted) seconds for the program on that day |
+| `<zone>_scheduled_sec` | Scheduled seconds for that specific zone |
+| `<zone>_computed_sec` | Computed seconds for that specific zone |
+| `<zone>_watering_flag` | Watering flag for that zone (localized) |
+
+These sensors are updated by the slow coordinator (default every 5 minutes).
+
+## Per-Zone Manual Irrigation
+
+For each HA-enabled zone, two entities allow starting a manual run with a configurable duration:
+
+- **`number.<zone>_manual_duration`** — desired run duration in minutes (0.5–300, step 0.5, default 10). This is independent of the zone switch default.
+- **`button.<zone>_start_manual`** — immediately starts the zone for the duration configured in `number.<zone>_manual_duration`. The zone run countdown sensor (`sensor.<zone>_run_countdown`) activates within 1–2 seconds.
+
+**Typical usage:**
+1. Set `number.<zone>_manual_duration` to the desired number of minutes (e.g. `5`).
+2. Press `button.<zone>_start_manual`.
+3. Monitor `sensor.<zone>_run_countdown` to track the remaining time.
 
 ## Per-Zone Duration Type
 
@@ -281,7 +326,7 @@ This maps directly to the "adaptive frequency percentage" field in the RainMachi
 
 The integration polls your RainMachine's local API using two independent coordinators:
 
-- **Slow coordinator** (default every 5 min) — weather, forecast, restrictions, rain delay, provision, firmware, zone properties, watering details
+- **Slow coordinator** (default every 5 min) — weather, forecast, restrictions, rain delay, provision, firmware, zone properties, watering details, irrigation forecast
 - **Fast coordinator** (default every 10 s) — zone list, program list, watering queue
 
 **API endpoints used:**
@@ -290,9 +335,10 @@ The integration polls your RainMachine's local API using two independent coordin
 |----------|------|
 | `/api/4/auth/login` | Authentication |
 | `/api/4/parser` | Weather parser status |
-| `/api/4/watering/log/details` | Today's watering summary (all runs including manual) and per-zone details |
+| `/api/4/watering/log/details` | Today's watering summary (all runs including manual), per-zone details, and yesterday's irrigation forecast per program |
 | `/api/4/watering/queue` | Currently running zones/programs (remaining seconds) |
 | `/api/4/watering/pause` | Pause all active watering (POST) and check remaining pause time (GET) |
+| `/api/4/dailystats/details` | 7-day irrigation forecast per program |
 | `/api/4/mixer` | Forecast conditions |
 | `/api/4/zone` | Zone list and status (includes master valve if present) |
 | `/api/4/zone/properties` | Zone WaterSense properties (referenceTime, userPercentage) |
