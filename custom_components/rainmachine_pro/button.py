@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, CONF_PROGRAMS
+from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES
 from .coordinator import RainMachineProCoordinator
 from .entity import RainMachineBaseEntity
 
@@ -24,11 +24,20 @@ async def async_setup_entry(
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
+    zones_config = entry.options.get(CONF_ZONES, {})
 
     entities = [
         RainMachineRebootButton(coordinator, entry),
         RainMachinePauseButton(coordinator, entry),
     ]
+
+    # Per-zone manual start buttons
+    for uid_str, zone_cfg in zones_config.items():
+        if not zone_cfg.get("enabled", False):
+            continue
+        uid = int(uid_str)
+        zone_name = zone_cfg.get("name") or f"Zone {uid}"
+        entities.append(RainMachineZoneStartButton(coordinator, entry, uid, zone_name))
 
     for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
@@ -90,6 +99,34 @@ class RainMachinePauseButton(RainMachineBaseEntity, ButtonEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to pause watering: %s", err)
+
+
+class RainMachineZoneStartButton(RainMachineBaseEntity, ButtonEntity):
+    """Button to start manual irrigation for a zone with the configured duration."""
+
+    _attr_icon = "mdi:play-circle"
+
+    def __init__(self, coordinator: RainMachineProCoordinator, entry: ConfigEntry, uid: int, zone_name: str) -> None:
+        super().__init__(coordinator, entry)
+        self._uid = uid
+        self._attr_name = f"{zone_name} start manual"
+        self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_start_manual"
+
+    async def async_press(self) -> None:
+        duration_min = float(
+            self.hass.data[DOMAIN].get(
+                f"{self._entry.entry_id}_zone_{self._uid}_manual_duration", 10.0
+            )
+        )
+        duration_sec = int(duration_min * 60)
+        try:
+            await self.coordinator.client.action_start_zone(self._uid, duration_sec)
+            fast_coord = self.hass.data[DOMAIN].get(f"{self._entry.entry_id}_fast")
+            if fast_coord:
+                await fast_coord.async_request_refresh()
+            _LOGGER.info("Zone %s manual start for %d seconds", self._uid, duration_sec)
+        except Exception as err:
+            _LOGGER.error("Failed to start zone %s: %s", self._uid, err)
 
 
 class RainMachineProgramIncreaseButton(RainMachineBaseEntity, ButtonEntity):

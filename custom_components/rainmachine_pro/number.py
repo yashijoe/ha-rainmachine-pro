@@ -40,6 +40,15 @@ async def async_setup_entry(
         RainMachinePauseDurationNumber(coordinator, entry),
     ]
 
+    # Per-zone manual duration
+    for uid_str, zone_cfg in zones_config.items():
+        if not zone_cfg.get("enabled", False):
+            continue
+        uid = int(uid_str)
+        zone_name = zone_cfg.get("name") or f"Zone {uid}"
+        hass.data[DOMAIN].setdefault(f"{entry.entry_id}_zone_{uid}_manual_duration", 10.0)
+        entities.append(RainMachineZoneManualDurationNumber(coordinator, entry, uid, zone_name))
+
     for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
         prog_cfg = enabled_programs.get(str(pid), {})
@@ -157,6 +166,39 @@ class RainMachinePauseDurationNumber(CoordinatorEntity, NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         self._value = value
         self.hass.data[DOMAIN][f"{self._entry.entry_id}_pause_duration_min"] = value
+        self.async_write_ha_state()
+
+
+class RainMachineZoneManualDurationNumber(CoordinatorEntity, NumberEntity):
+    """Number entity: manual irrigation duration for a zone. Press start button to apply."""
+
+    _attr_has_entity_name = True
+    _attr_native_min_value = 0.5
+    _attr_native_max_value = 300
+    _attr_native_step = 0.5
+    _attr_native_unit_of_measurement = "min"
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:timer-outline"
+
+    def __init__(self, coordinator, entry, uid: int, zone_name: str) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._uid = uid
+        self._value: float = 10.0
+        self._attr_name = f"{zone_name} manual duration"
+        self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_manual_duration"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    @property
+    def native_value(self) -> float:
+        return self._value
+
+    async def async_set_native_value(self, value: float) -> None:
+        self._value = value
+        self.hass.data[DOMAIN][f"{self._entry.entry_id}_zone_{self._uid}_manual_duration"] = value
         self.async_write_ha_state()
 
 
