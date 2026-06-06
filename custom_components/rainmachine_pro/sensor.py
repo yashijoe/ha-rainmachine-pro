@@ -23,6 +23,7 @@ from .const import (
     CONF_PROGRAMS,
     CONF_PARSERS,
     FLAG_MAP,
+    TIME_UNITS,
     WEATHER_CONDITIONS,
     WEATHER_CONDITIONS_TRANSLATED,
     WEATHER_ICONS,
@@ -243,7 +244,9 @@ class RainMachineRainDelaySensor(RainMachineBaseEntity, SensorEntity):
         days = delay_sec // 86400
         hours = (delay_sec % 86400) // 3600
         minutes = (delay_sec % 3600) // 60
-        return f"{days} giorni {hours} ore {minutes} minuti"
+        lang = self._get_lang()
+        units = TIME_UNITS.get(lang, TIME_UNITS["en"])
+        return f"{days} {units['days']} {hours} {units['hours']} {minutes} {units['minutes']}"
 
     @property
     def icon(self):

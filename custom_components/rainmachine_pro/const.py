@@ -178,3 +178,11 @@ WEATHER_ICONS = {
     "lightning-rainy": "mdi:weather-lightning-rainy",
     "unknown": "mdi:weather-cloudy-alert",
 }
+
+TIME_UNITS = {
+    "en": {"days": "days", "hours": "hours", "minutes": "minutes"},
+    "it": {"days": "giorni", "hours": "ore", "minutes": "minuti"},
+    "de": {"days": "Tage", "hours": "Stunden", "minutes": "Minuten"},
+    "fr": {"days": "jours", "hours": "heures", "minutes": "minutes"},
+    "es": {"days": "días", "hours": "horas", "minutes": "minutos"},
+}
