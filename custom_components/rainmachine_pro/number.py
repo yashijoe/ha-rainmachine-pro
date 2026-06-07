@@ -76,6 +76,21 @@ async def async_setup_entry(
             RainMachineProgramFrequencyInterval(fast_coordinator, entry, pid, name, freq_state)
         )
 
+        # Init cycle & soak pending state (select.py may have already done this)
+        cs_cycles_key = f"{entry.entry_id}_prog_{pid}_cs_cycles"
+        cs_min_key = f"{entry.entry_id}_prog_{pid}_cs_min"
+        hass.data[DOMAIN].setdefault(cs_cycles_key, 2)
+        hass.data[DOMAIN].setdefault(cs_min_key, 0)
+        cs_on = program.get("cs_on", False)
+        cycles_val = int(program.get("cycles", -1))
+        soak_val = int(program.get("soak", 0))
+        if cs_on and cycles_val > 0:
+            hass.data[DOMAIN][cs_cycles_key] = cycles_val
+            hass.data[DOMAIN][cs_min_key] = soak_val // 60
+
+        entities.append(RainMachineProgramCycleSoakCyclesNumber(fast_coordinator, entry, pid, name))
+        entities.append(RainMachineProgramCycleSoakMinNumber(fast_coordinator, entry, pid, name))
+
         for wt in program.get("wateringTimes", []):
             zid = wt["id"]
             zone_cfg = zones_config.get(str(zid), {})
@@ -255,6 +270,119 @@ class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
                 await self.coordinator.async_request_refresh()
             except Exception as err:
                 _LOGGER.error("Failed to set frequency interval for program %s: %s", self._pid, err)
+
+
+class RainMachineProgramCycleSoakCyclesNumber(CoordinatorEntity, NumberEntity):
+    """Number entity: number of cycles for cycle & soak (custom mode)."""
+
+    _attr_native_min_value = 2
+    _attr_native_max_value = 50
+    _attr_native_step = 1
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:repeat"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._pid = pid
+        self._attr_name = f"{program_name} cycle soak cycles"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_cycle_soak_cycles"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    def _get_program(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog
+        return None
+
+    @property
+    def native_value(self) -> float:
+        prog = self._get_program()
+        if prog and prog.get("cs_on", False) and int(prog.get("cycles", -1)) > 0:
+            val = int(prog["cycles"])
+            self.hass.data[DOMAIN][f"{self._entry.entry_id}_prog_{self._pid}_cs_cycles"] = val
+            return float(val)
+        return float(self.hass.data[DOMAIN].get(
+            f"{self._entry.entry_id}_prog_{self._pid}_cs_cycles", 2
+        ))
+
+    async def async_set_native_value(self, value: float) -> None:
+        cycles = int(value)
+        self.hass.data[DOMAIN][f"{self._entry.entry_id}_prog_{self._pid}_cs_cycles"] = cycles
+        self.async_write_ha_state()
+        prog = self._get_program()
+        if prog and prog.get("cs_on", False) and int(prog.get("cycles", -1)) > 0:
+            soak_min = int(self.hass.data[DOMAIN].get(
+                f"{self._entry.entry_id}_prog_{self._pid}_cs_min", 0
+            ))
+            try:
+                await self.coordinator.client.action_set_cycle_soak(
+                    self._pid, True, cycles, soak_min * 60
+                )
+                await self.coordinator.async_request_refresh()
+            except Exception as err:
+                _LOGGER.error("Failed to set cycle soak cycles for program %s: %s", self._pid, err)
+
+
+class RainMachineProgramCycleSoakMinNumber(CoordinatorEntity, NumberEntity):
+    """Number entity: soak duration (minutes) for cycle & soak (custom mode)."""
+
+    _attr_native_min_value = 0
+    _attr_native_max_value = 300
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "min"
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:timer-sand"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._pid = pid
+        self._attr_name = f"{program_name} cycle soak min"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_cycle_soak_min"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    def _get_program(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog
+        return None
+
+    @property
+    def native_value(self) -> float:
+        prog = self._get_program()
+        if prog and prog.get("cs_on", False) and int(prog.get("cycles", -1)) > 0:
+            val = int(prog.get("soak", 0)) // 60
+            self.hass.data[DOMAIN][f"{self._entry.entry_id}_prog_{self._pid}_cs_min"] = val
+            return float(val)
+        return float(self.hass.data[DOMAIN].get(
+            f"{self._entry.entry_id}_prog_{self._pid}_cs_min", 0
+        ))
+
+    async def async_set_native_value(self, value: float) -> None:
+        soak_min = int(value)
+        self.hass.data[DOMAIN][f"{self._entry.entry_id}_prog_{self._pid}_cs_min"] = soak_min
+        self.async_write_ha_state()
+        prog = self._get_program()
+        if prog and prog.get("cs_on", False) and int(prog.get("cycles", -1)) > 0:
+            cycles = int(self.hass.data[DOMAIN].get(
+                f"{self._entry.entry_id}_prog_{self._pid}_cs_cycles", 2
+            ))
+            try:
+                await self.coordinator.client.action_set_cycle_soak(
+                    self._pid, True, cycles, soak_min * 60
+                )
+                await self.coordinator.async_request_refresh()
+            except Exception as err:
+                _LOGGER.error("Failed to set cycle soak soak_min for program %s: %s", self._pid, err)
 
 
 class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity, RestoreEntity):

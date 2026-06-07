@@ -17,6 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 _FREEZE_TEMPS = [str(t) for t in range(-7, 5)]
 _FREQ_OPTIONS = ["daily", "every_n_days", "odd_days", "even_days", "selected_days"]
 _DURATION_TYPE_OPTIONS = ["suggested", "custom", "not_set"]
+_CYCLE_SOAK_OPTIONS = ["off", "auto", "custom"]
 
 _DAY_POS = [8, 7, 6, 5, 4, 3, 2]  # Mon(0)..Sun(6) → string position
 
@@ -82,6 +83,20 @@ async def async_setup_entry(
         entities.append(
             RainMachineProgramFrequencySelect(fast_coordinator, entry, pid, name, freq_state)
         )
+
+        # Init cycle & soak pending state
+        cs_cycles_key = f"{entry.entry_id}_prog_{pid}_cs_cycles"
+        cs_min_key = f"{entry.entry_id}_prog_{pid}_cs_min"
+        hass.data[DOMAIN].setdefault(cs_cycles_key, 2)
+        hass.data[DOMAIN].setdefault(cs_min_key, 0)
+        cs_on = program.get("cs_on", False)
+        cycles_val = int(program.get("cycles", -1))
+        soak_val = int(program.get("soak", 0))
+        if cs_on and cycles_val > 0:
+            hass.data[DOMAIN][cs_cycles_key] = cycles_val
+            hass.data[DOMAIN][cs_min_key] = soak_val // 60
+
+        entities.append(RainMachineProgramCycleSoakSelect(fast_coordinator, entry, pid, name))
 
         for wt in program.get("wateringTimes", []):
             zid = wt["id"]
@@ -186,6 +201,55 @@ class RainMachineProgramFrequencySelect(RainMachineBaseEntity, SelectEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to set frequency for program %s: %s", self._pid, err)
+
+
+class RainMachineProgramCycleSoakSelect(RainMachineBaseEntity, SelectEntity):
+    """Select entity for cycle & soak mode: off / auto / custom."""
+
+    _attr_icon = "mdi:repeat-variant"
+    _attr_options = _CYCLE_SOAK_OPTIONS
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
+        super().__init__(coordinator, entry)
+        self._pid = pid
+        self._attr_name = f"{program_name} cycle soak mode"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_cycle_soak_mode"
+
+    def _get_program(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog
+        return None
+
+    @property
+    def current_option(self) -> str | None:
+        prog = self._get_program()
+        if prog is None:
+            return None
+        if not prog.get("cs_on", False):
+            return "off"
+        return "custom" if int(prog.get("cycles", -1)) > 0 else "auto"
+
+    async def async_select_option(self, option: str) -> None:
+        try:
+            if option == "off":
+                await self.coordinator.client.action_set_cycle_soak(self._pid, False)
+            elif option == "auto":
+                await self.coordinator.client.action_set_cycle_soak(self._pid, True, -1, 0)
+            elif option == "custom":
+                cycles = int(self.hass.data[DOMAIN].get(
+                    f"{self._entry.entry_id}_prog_{self._pid}_cs_cycles", 2
+                ))
+                soak_min = int(self.hass.data[DOMAIN].get(
+                    f"{self._entry.entry_id}_prog_{self._pid}_cs_min", 0
+                ))
+                await self.coordinator.client.action_set_cycle_soak(
+                    self._pid, True, cycles, soak_min * 60
+                )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to set cycle soak mode for program %s: %s", self._pid, err)
 
 
 class RainMachineProgramZoneDurationTypeSelect(RainMachineBaseEntity, SelectEntity):

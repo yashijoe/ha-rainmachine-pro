@@ -255,6 +255,20 @@ class RainMachineClient:
         """Pause all watering. duration_seconds=0 cancels the pause."""
         return await self._action("watering/pauseall", {"duration": duration_seconds})
 
+    async def action_set_cycle_soak(
+        self, pid: int, cs_on: bool, cycles: int = -1, soak_sec: int = 0
+    ) -> dict:
+        """Set cycle & soak mode for a program.
+
+        cs_on=False → off.
+        cs_on=True, cycles=-1 → auto.
+        cs_on=True, cycles=N, soak_sec=S → custom.
+        """
+        return await self._action(
+            f"program/{pid}",
+            {"cs_on": cs_on, "cycles": cycles, "soak": soak_sec},
+        )
+
     async def action_adjust_program_durations(
         self, pid: int, direction: int, zone_properties: dict
     ) -> dict:

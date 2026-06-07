@@ -17,6 +17,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Program duration adjustment** — per-program +/− buttons adjust all active zone durations by a fixed 5% of each zone's WaterSense reference time; works for both suggested and custom zones
 - **Run countdown** — per-zone and per-program sensors showing remaining time as `M:SS` during active watering; works for both scheduled and manual runs
 - **Pause watering** — pause all active watering for a configurable duration (1–720 minutes) with a live countdown sensor; cancellable by setting duration to 0
+- **Cycle & Soak** — per-program cycle & soak control: off, auto (device decides), or custom (2–50 cycles, 0–300 min soak)
 - **Irrigation forecast** — 8 sensors per enabled program: yesterday's actual irrigation and a 7-day forecast (days 0–6), each with scheduled and computed seconds per zone
 - **Per-zone manual irrigation** — per-zone configurable duration (0.5–300 min) and a start button to immediately run that zone for the set duration
 - **Editable program start time** — set each program's scheduled start time directly from Home Assistant
@@ -128,6 +129,8 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `number.<program>_<zone>_watering_percentage` | WaterSense `userPercentage` for a zone in a program (config category) | 10–200%, step 5% |
 | `number.rainmachine_pause_duration` | Pause duration in minutes; set to 0 to cancel an active pause | 0–720 min, step 1 |
 | `number.<zone>_manual_duration` | Duration for the next manual zone run | 0.5–300 min, step 0.5, default 10 min |
+| `number.<program>_cycle_soak_cycles` | Number of cycles for Cycle & Soak (custom mode; pending when not in custom mode) | 2–50, step 1 |
+| `number.<program>_cycle_soak_min` | Soak time between cycles (custom mode; pending when not in custom mode) | 0–300 min, step 1 |
 
 ### Button
 
@@ -146,6 +149,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `select.rainmachine_freeze_protection_temperature` | Freeze protection threshold | −7 °C to +4 °C |
 | `select.<program_name>_frequency` | Irrigation frequency type | Daily / Every N days / Odd days / Even days / Selected days |
 | `select.<program>_<zone>_duration_type` | Duration type for a zone in a program (config category) | `suggested` / `custom` / `not set` |
+| `select.<program>_cycle_soak_mode` | Cycle & Soak mode for the program (config category) | `off` / `auto` / `custom` |
 
 ### Time
 
@@ -229,6 +233,26 @@ Three entities work together to pause and monitor all active irrigation:
 2. Press `button.rainmachine_pause_watering`.
 3. Monitor `sensor.rainmachine_pause_countdown` to track remaining pause time.
 4. To cancel early, set `number.rainmachine_pause_duration` to `0` and press the button again, or simply start a zone/program.
+
+## Cycle & Soak
+
+For each enabled program, three CONFIG-category entities control the cycle & soak behaviour:
+
+- **`select.<program>_cycle_soak_mode`** — selects the mode:
+  - `off` — cycle & soak disabled (`cs_on = false`)
+  - `auto` — device computes cycles automatically (`cs_on = true, cycles = -1`)
+  - `custom` — user-defined cycles and soak time (`cs_on = true, cycles = N, soak = S`)
+
+- **`number.<program>_cycle_soak_cycles`** — number of cycles (2–50, step 1). Applies immediately when mode is already `custom`; stored as a pending value otherwise and applied the next time `custom` is selected.
+
+- **`number.<program>_cycle_soak_min`** — soak duration in minutes (0–300, step 1). Same apply/pending logic as cycles.
+
+**Typical usage:**
+1. Set `number.<program>_cycle_soak_cycles` to the desired cycle count (e.g. `3`).
+2. Set `number.<program>_cycle_soak_min` to the desired soak time in minutes (e.g. `10`).
+3. Select `custom` in `select.<program>_cycle_soak_mode` — both values are sent to the controller in one call.
+
+To switch to automatic mode, select `auto`. To disable cycle & soak entirely, select `off`.
 
 ## Irrigation Forecast
 
@@ -343,7 +367,7 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/zone` | Zone list and status (includes master valve if present) |
 | `/api/4/zone/properties` | Zone WaterSense properties (referenceTime, userPercentage) |
 | `/api/4/program` | Program list and status |
-| `/api/4/program/{id}` | Read/update program (start time, frequency, duration type, duration adjustment, weather adaptive, adaptive frequency) |
+| `/api/4/program/{id}` | Read/update program (start time, frequency, duration type, duration adjustment, weather adaptive, adaptive frequency, cycle & soak) |
 | `/api/4/restrictions/currently` | Active restrictions |
 | `/api/4/restrictions/global` | Global restriction settings |
 | `/api/4/restrictions/raindelay` | Rain delay status (GET/POST) |
