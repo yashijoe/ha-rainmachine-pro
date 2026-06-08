@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -20,7 +21,6 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up button entities from a config entry."""
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
     fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
     enabled_programs = entry.options.get(CONF_PROGRAMS, {})
@@ -31,13 +31,14 @@ async def async_setup_entry(
         RainMachinePauseButton(coordinator, entry),
     ]
 
-    # Per-zone manual start buttons
+    # Per-zone: manual start + ET coefficient apply
     for uid_str, zone_cfg in zones_config.items():
         if not zone_cfg.get("enabled", False):
             continue
         uid = int(uid_str)
         zone_name = zone_cfg.get("name") or f"Zone {uid}"
         entities.append(RainMachineZoneStartButton(coordinator, entry, uid, zone_name))
+        entities.append(RainMachineZoneApplyETCoefButton(coordinator, entry, uid, zone_name))
 
     for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
@@ -52,8 +53,6 @@ async def async_setup_entry(
 
 
 class RainMachineRebootButton(RainMachineBaseEntity, ButtonEntity):
-    """Button to reboot the RainMachine controller."""
-
     _attr_name = "Reboot"
     _attr_icon = "mdi:restart"
 
@@ -70,8 +69,6 @@ class RainMachineRebootButton(RainMachineBaseEntity, ButtonEntity):
 
 
 class RainMachinePauseButton(RainMachineBaseEntity, ButtonEntity):
-    """Button to pause all watering (duration from number entity; 0 cancels pause)."""
-
     _attr_name = "Pause watering"
     _attr_icon = "mdi:pause-circle"
 
@@ -102,8 +99,6 @@ class RainMachinePauseButton(RainMachineBaseEntity, ButtonEntity):
 
 
 class RainMachineZoneStartButton(RainMachineBaseEntity, ButtonEntity):
-    """Button to start manual irrigation for a zone with the configured duration."""
-
     _attr_icon = "mdi:play-circle"
 
     def __init__(self, coordinator: RainMachineProCoordinator, entry: ConfigEntry, uid: int, zone_name: str) -> None:
@@ -129,9 +124,38 @@ class RainMachineZoneStartButton(RainMachineBaseEntity, ButtonEntity):
             _LOGGER.error("Failed to start zone %s: %s", self._uid, err)
 
 
-class RainMachineProgramIncreaseButton(RainMachineBaseEntity, ButtonEntity):
-    """Button to increase all active zone durations by 5% of WaterSense referenceTime."""
+class RainMachineZoneApplyETCoefButton(RainMachineBaseEntity, ButtonEntity):
+    """Button to write the pending ET coefficient value to the device."""
 
+    _attr_icon = "mdi:check-circle-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: RainMachineProCoordinator, entry: ConfigEntry, uid: int, zone_name: str) -> None:
+        super().__init__(coordinator, entry)
+        self._uid = uid
+        self._attr_name = f"{zone_name} apply ET coefficient"
+        self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_apply_et_coef"
+
+    async def async_press(self) -> None:
+        pending_key = f"{self._entry.entry_id}_zone_{self._uid}_et_coef_pending"
+        value = self.hass.data[DOMAIN].get(pending_key)
+        if value is None:
+            props = self.coordinator.data.get("zone_properties", {}).get(self._uid, {})
+            value = props.get("ETcoef")
+        if value is None:
+            _LOGGER.warning("No ET coefficient available for zone %s", self._uid)
+            return
+        try:
+            await self.coordinator.client.action_set_zone_et_coef(self._uid, float(value))
+            self.hass.data[DOMAIN][pending_key] = None
+            await self.coordinator.async_request_refresh()
+            _LOGGER.info("ET coefficient for zone %s set to %s", self._uid, value)
+        except Exception as err:
+            _LOGGER.error("Failed to apply ET coefficient for zone %s: %s", self._uid, err)
+
+
+class RainMachineProgramIncreaseButton(RainMachineBaseEntity, ButtonEntity):
     _attr_icon = "mdi:plus-circle-outline"
 
     def __init__(self, coordinator, slow_coordinator, entry, pid: int, program_name: str) -> None:
@@ -151,8 +175,6 @@ class RainMachineProgramIncreaseButton(RainMachineBaseEntity, ButtonEntity):
 
 
 class RainMachineProgramDecreaseButton(RainMachineBaseEntity, ButtonEntity):
-    """Button to decrease all active zone durations by 5% of WaterSense referenceTime."""
-
     _attr_icon = "mdi:minus-circle-outline"
 
     def __init__(self, coordinator, slow_coordinator, entry, pid: int, program_name: str) -> None:

@@ -219,6 +219,11 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
         attrs["uid"] = self._uid
         attrs["zid"] = self._uid
 
+        # ET coefficient from zone properties (slow coordinator, updated every 5 min)
+        zone_props = self._slow_coordinator.data.get("zone_properties", {}).get(self._uid, {})
+        et_coef = zone_props.get("ETcoef")
+        attrs["et_coefficient"] = round(float(et_coef), 2) if et_coef is not None else None
+
         running_item = None
         queued_item = None
         for item in self.coordinator.data.get("queue", []):

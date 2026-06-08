@@ -40,7 +40,7 @@ async def async_setup_entry(
         RainMachinePauseDurationNumber(coordinator, entry),
     ]
 
-    # Per-zone manual duration
+    # Per-zone: manual duration + ET coefficient
     for uid_str, zone_cfg in zones_config.items():
         if not zone_cfg.get("enabled", False):
             continue
@@ -48,6 +48,7 @@ async def async_setup_entry(
         zone_name = zone_cfg.get("name") or f"Zone {uid}"
         hass.data[DOMAIN].setdefault(f"{entry.entry_id}_zone_{uid}_manual_duration", 10.0)
         entities.append(RainMachineZoneManualDurationNumber(coordinator, entry, uid, zone_name))
+        entities.append(RainMachineZoneETCoefNumber(coordinator, entry, uid, zone_name))
 
     for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
@@ -76,7 +77,6 @@ async def async_setup_entry(
             RainMachineProgramFrequencyInterval(fast_coordinator, entry, pid, name, freq_state)
         )
 
-        # Init cycle & soak pending state (select.py may have already done this)
         cs_cycles_key = f"{entry.entry_id}_prog_{pid}_cs_cycles"
         cs_min_key = f"{entry.entry_id}_prog_{pid}_cs_min"
         hass.data[DOMAIN].setdefault(cs_cycles_key, 2)
@@ -112,8 +112,6 @@ async def async_setup_entry(
 
 
 class RainMachineRainDelayNumber(CoordinatorEntity, NumberEntity):
-    """Number entity for setting rain delay days."""
-
     _attr_has_entity_name = True
     _attr_name = "Rain delay days"
     _attr_icon = "mdi:weather-rainy"
@@ -153,8 +151,6 @@ class RainMachineRainDelayNumber(CoordinatorEntity, NumberEntity):
 
 
 class RainMachinePauseDurationNumber(CoordinatorEntity, NumberEntity):
-    """Number entity: pause duration in minutes. Press pause button to apply."""
-
     _attr_has_entity_name = True
     _attr_name = "Pause duration"
     _attr_icon = "mdi:pause-circle-outline"
@@ -185,8 +181,6 @@ class RainMachinePauseDurationNumber(CoordinatorEntity, NumberEntity):
 
 
 class RainMachineZoneManualDurationNumber(CoordinatorEntity, NumberEntity):
-    """Number entity: manual irrigation duration for a zone. Press start button to apply."""
-
     _attr_has_entity_name = True
     _attr_native_min_value = 0.5
     _attr_native_max_value = 300
@@ -217,9 +211,47 @@ class RainMachineZoneManualDurationNumber(CoordinatorEntity, NumberEntity):
         self.async_write_ha_state()
 
 
-class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
-    """Number entity for the interval (days) when frequency is 'Every N days'."""
+class RainMachineZoneETCoefNumber(CoordinatorEntity, NumberEntity):
+    """Number entity for zone ET coefficient (ETcoef). Reads from device every 5 min.
+    User changes are stored as pending and applied via the apply button."""
 
+    _attr_native_min_value = 0.01
+    _attr_native_max_value = 2.0
+    _attr_native_step = 0.01
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:leaf"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator, entry, uid: int, zone_name: str) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._uid = uid
+        self._attr_name = f"{zone_name} ET coefficient"
+        self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_et_coef"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    def _pending_key(self) -> str:
+        return f"{self._entry.entry_id}_zone_{self._uid}_et_coef_pending"
+
+    @property
+    def native_value(self) -> float | None:
+        pending = self.hass.data[DOMAIN].get(self._pending_key())
+        if pending is not None:
+            return pending
+        props = self.coordinator.data.get("zone_properties", {}).get(self._uid, {})
+        val = props.get("ETcoef")
+        return round(float(val), 2) if val is not None else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        self.hass.data[DOMAIN][self._pending_key()] = round(value, 2)
+        self.async_write_ha_state()
+
+
+class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
     _attr_native_min_value = 1
     _attr_native_max_value = 14
     _attr_native_step = 1
@@ -273,8 +305,6 @@ class RainMachineProgramFrequencyInterval(CoordinatorEntity, NumberEntity):
 
 
 class RainMachineProgramCycleSoakCyclesNumber(CoordinatorEntity, NumberEntity):
-    """Number entity: number of cycles for cycle & soak (custom mode)."""
-
     _attr_native_min_value = 2
     _attr_native_max_value = 50
     _attr_native_step = 1
@@ -329,8 +359,6 @@ class RainMachineProgramCycleSoakCyclesNumber(CoordinatorEntity, NumberEntity):
 
 
 class RainMachineProgramCycleSoakMinNumber(CoordinatorEntity, NumberEntity):
-    """Number entity: soak duration (minutes) for cycle & soak (custom mode)."""
-
     _attr_native_min_value = 0
     _attr_native_max_value = 300
     _attr_native_step = 1
@@ -386,8 +414,6 @@ class RainMachineProgramCycleSoakMinNumber(CoordinatorEntity, NumberEntity):
 
 
 class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity, RestoreEntity):
-    """Number entity: custom duration (minutes, step 0.5) for a zone in a program."""
-
     _attr_has_entity_name = True
     _attr_native_min_value = 0.5
     _attr_native_max_value = 299.5
@@ -455,8 +481,6 @@ class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity, Rest
 
 
 class RainMachineProgramZonePercentageNumber(CoordinatorEntity, NumberEntity):
-    """Number entity: WaterSense userPercentage for a zone in a program."""
-
     _attr_has_entity_name = True
     _attr_native_min_value = 10
     _attr_native_max_value = 200

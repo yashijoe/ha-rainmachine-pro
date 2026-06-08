@@ -181,6 +181,9 @@ class RainMachineClient:
     async def action_set_zone_active(self, zid: int, active: bool) -> dict:
         return await self._action(f"zone/{zid}/properties", {"active": active})
 
+    async def action_set_zone_et_coef(self, uid: int, value: float) -> dict:
+        return await self._action(f"zone/{uid}/properties", {"ETcoef": round(value, 4)})
+
     async def action_start_program(self, pid: int) -> dict:
         return await self._action(f"program/{pid}/start", {"pid": pid})
 
@@ -258,12 +261,6 @@ class RainMachineClient:
     async def action_set_cycle_soak(
         self, pid: int, cs_on: bool, cycles: int = -1, soak_sec: int = 0
     ) -> dict:
-        """Set cycle & soak mode for a program.
-
-        cs_on=False → off.
-        cs_on=True, cycles=-1 → auto.
-        cs_on=True, cycles=N, soak_sec=S → custom.
-        """
         return await self._action(
             f"program/{pid}",
             {"cs_on": cs_on, "cycles": cycles, "soak": soak_sec},
