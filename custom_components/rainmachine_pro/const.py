@@ -100,6 +100,14 @@ FLAG_MAP = {
     },
 }
 
+ZONE_RUNNING_MAP = {
+    "en": {True: "Watering", False: "Queued"},
+    "it": {True: "In irrigazione", False: "In attesa"},
+    "de": {True: "In Bewässerung", False: "In Warteschlange"},
+    "fr": {True: "En arrosage", False: "En attente"},
+    "es": {True: "Regando", False: "En cola"},
+}
+
 WEATHER_CONDITIONS = {
     0: "cloudy", 1: "sunny", 2: "partly-cloudy", 3: "partly-cloudy",
     4: "partly-cloudy", 5: "rainy", 6: "sunny", 7: "snowy",

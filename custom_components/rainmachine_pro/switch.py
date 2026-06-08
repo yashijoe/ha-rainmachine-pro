@@ -8,7 +8,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES
+from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES, FLAG_MAP, ZONE_RUNNING_MAP
 from .coordinator import RainMachineProCoordinator
 from .entity import RainMachineBaseEntity
 
@@ -212,15 +212,39 @@ class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
     @property
     def extra_state_attributes(self) -> dict:
         attrs = {}
+        lang = self._get_lang()
+        flag_map = FLAG_MAP.get(lang, FLAG_MAP["en"])
+        running_map = ZONE_RUNNING_MAP.get(lang, ZONE_RUNNING_MAP["en"])
 
-        next_run_found = False
+        attrs["uid"] = self._uid
+        attrs["zid"] = self._uid
+
+        running_item = None
+        queued_item = None
         for item in self.coordinator.data.get("queue", []):
-            if item.get("zid") == self._uid and not item.get("running"):
-                attrs["next_run"] = item.get("startTime") or item.get("eta")
-                next_run_found = True
-                break
+            if item.get("zid") == self._uid:
+                if item.get("running"):
+                    running_item = item
+                elif queued_item is None:
+                    queued_item = item
 
-        if not next_run_found:
+        queue_item = running_item or queued_item
+        if queue_item is not None:
+            is_running = queue_item.get("running", False)
+            attrs["running"] = running_map.get(is_running, running_map[False])
+            attrs["remaining"] = queue_item.get("remaining")
+            raw_flag = queue_item.get("flag")
+            attrs["flag"] = flag_map.get(raw_flag, str(raw_flag) if raw_flag is not None else None)
+            attrs["machine_duration"] = queue_item.get("machineDuration")
+        else:
+            attrs["running"] = None
+            attrs["remaining"] = None
+            attrs["flag"] = None
+            attrs["machine_duration"] = None
+
+        if queued_item is not None:
+            attrs["next_run"] = queued_item.get("startTime") or queued_item.get("eta")
+        else:
             candidates = []
             for prog in self.coordinator.data.get("programs", []):
                 if not prog.get("active"):
