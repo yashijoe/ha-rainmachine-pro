@@ -14,14 +14,15 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Per-zone details** — scheduled vs actual duration, start time, and skip reason for each zone
 - **Planned zone durations** — each program switch exposes expected watering duration per active zone (suggested, custom, or not set); each zone sensor exposes expected duration per program
 - **Per-zone duration type control** — select `suggested`, `custom`, or `not set` per zone per program; set custom duration (minutes) and WaterSense percentage independently
-- **Program duration adjustment** — per-program +/− buttons adjust all active zone durations by a fixed 5% of each zone’s WaterSense reference time; works for both suggested and custom zones
+- **Program duration adjustment** — per-program +/− buttons adjust all active zone durations by a fixed 5% of each zone's WaterSense reference time; works for both suggested and custom zones
 - **Run countdown** — per-zone and per-program sensors showing remaining time as `M:SS` during active watering; works for both scheduled and manual runs
 - **Pause watering** — pause all active watering for a configurable duration (1–720 minutes) with a live countdown sensor; cancellable by setting duration to 0
 - **Cycle & Soak** — per-program cycle & soak control: off, auto (device decides), or custom (2–50 cycles, 0–300 min soak)
-- **Irrigation forecast** — 8 sensors per enabled program: yesterday’s actual irrigation and a 7-day forecast (days 0–6), each with scheduled and computed seconds per zone
+- **Irrigation forecast** — 8 sensors per enabled program: yesterday's actual irrigation and a 7-day forecast (days 0–6), each with scheduled and computed seconds per zone
 - **Per-zone manual irrigation** — per-zone configurable duration (0.5–300 min) and a start button to immediately run that zone for the set duration
-- **Editable program start time** — set each program’s scheduled start time directly from Home Assistant
-- **Editable program frequency** — set each program’s irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
+- **ET coefficient** — per-zone ET coefficient (0.01–2.0) exposed as a zone switch attribute (updated every 5 min) and as an optional config number entity with a dedicated apply button
+- **Editable program start time** — set each program's scheduled start time directly from Home Assistant
+- **Editable program frequency** — set each program's irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
 - **Weather adaptive watering** — per-program switch to enable/disable the use of internet weather data for adaptive watering
 - **Adaptive frequency** — per-program switch to enable/disable adaptive watering frequency adjustment
 - **Zone and program control** — start/stop irrigation zones and programs, enable/disable them
@@ -67,7 +68,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
    - **Zone/program update interval**: fast polling frequency in seconds (default: `10`, range: 5–60) — zone and program run state
    - **Timeout**: connection timeout in seconds (default: `20`, range: 5–120)
 4. Click **Submit**
-5. **Zone configuration** — enable/disable each zone and customize display names; only enabled zones create entities. If your controller has a master valve, it will appear here with its name from the RainMachine app (e.g. “Master Valve”) and can be enabled/disabled independently.
+5. **Zone configuration** — enable/disable each zone and customize display names; only enabled zones create entities. If your controller has a master valve, it will appear here with its name from the RainMachine app (e.g. "Master Valve") and can be enabled/disabled independently.
 6. **Program configuration** — enable/disable each program and customize display names; only enabled programs create entities
 7. **Parser configuration** — select which weather parsers generate sensor entities
 
@@ -90,7 +91,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `sensor.<zone>_run_countdown` | Remaining time for currently running zone (`M:SS`); `null` when idle | — | — |
 | `sensor.<program>_run_countdown` | Remaining time for currently running program (`M:SS`); `null` when idle | — | — |
 | `sensor.rainmachine_pause_countdown` | Live countdown of remaining pause time as `M:SS`; `null` when not paused or when a zone starts running | — | — |
-| `sensor.rainmachine_<program>_irrigation_forecast_y` | Yesterday’s actual irrigation for the program (total `userDuration` in seconds) | — | — |
+| `sensor.rainmachine_<program>_irrigation_forecast_y` | Yesterday's actual irrigation for the program (total `userDuration` in seconds) | — | — |
 | `sensor.rainmachine_<program>_irrigation_forecast_0` … `_6` | 7-day irrigation forecast for the program (day 0 = today … day 6); state = total `scheduledWateringTime` in seconds | — | — |
 
 ### Binary Sensors
@@ -109,11 +110,11 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 
 | Entity | Description |
 |--------|-------------|
-| `switch.<zone_name>` | Start/stop a zone manually (10 min default) — attributes: `uid`, `zid`, `running`, `remaining`, `machine_duration`, `flag`, `last_run_start`, `last_run_end`, `next_run` |
+| `switch.<zone_name>` | Start/stop a zone manually (10 min default) — attributes: `uid`, `zid`, `et_coefficient`, `running`, `remaining`, `machine_duration`, `flag`, `last_run_start`, `last_run_end`, `next_run` |
 | `switch.<zone_name>_enabled` | Enable/disable a zone |
 | `switch.<program_name>` | Start/stop a program — see attributes below |
 | `switch.<program_name>_enabled` | Enable/disable a program |
-| `switch.<program_name>_frequency_Mon` … `switch.<program_name>_frequency_Sun` | Weekday toggles for “Selected days” frequency (7 switches per program, config category) |
+| `switch.<program_name>_frequency_Mon` … `switch.<program_name>_frequency_Sun` | Weekday toggles for "Selected days" frequency (7 switches per program, config category) |
 | `switch.<program_name>_weather_adaptive_watering` | Enable/disable weather-adaptive watering per program (ON = uses internet weather data, OFF = ignores internet weather) |
 | `switch.<program_name>_use_adaptive_frequency` | Enable/disable adaptive watering frequency per program (ON = 50% adaptive adjustment, OFF = 0%) |
 | `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
@@ -124,11 +125,12 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | Entity | Description | Range |
 |--------|-------------|-------|
 | `number.rainmachine_rain_delay_days` | Set rain delay | 0–14 days |
-| `number.<program_name>_frequency_interval` | Days between runs when frequency is “Every N days” | 1–14 days |
+| `number.<program_name>_frequency_interval` | Days between runs when frequency is "Every N days" | 1–14 days |
 | `number.<program>_<zone>_custom_duration` | Custom duration for a zone in a program (config category) | 0.5–299.5 min, step 0.5 |
 | `number.<program>_<zone>_watering_percentage` | WaterSense `userPercentage` for a zone in a program (config category) | 10–200%, step 5% |
 | `number.rainmachine_pause_duration` | Pause duration in minutes; set to 0 to cancel an active pause | 0–720 min, step 1 |
 | `number.<zone>_manual_duration` | Duration for the next manual zone run | 0.5–300 min, step 0.5, default 10 min |
+| `number.<zone>_et_coefficient` | Zone ET coefficient — WaterSense evapotranspiration adjustment factor; reads from device every 5 min, stores pending value until applied via the apply button (disabled by default, config category) | 0.01–2.0, step 0.01 |
 | `number.<program>_cycle_soak_cycles` | Number of cycles for Cycle & Soak (custom mode; pending when not in custom mode) | 2–50, step 1 |
 | `number.<program>_cycle_soak_min` | Soak time between cycles (custom mode; pending when not in custom mode) | 0–300 min, step 1 |
 
@@ -137,10 +139,11 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | Entity | Description |
 |--------|-------------|
 | `button.rainmachine_reboot` | Reboot the RainMachine controller |
-| `button.<program_name>_increase_duration` | Increase all active zone durations by 5% of each zone’s WaterSense reference time |
-| `button.<program_name>_decrease_duration` | Decrease all active zone durations by 5% of each zone’s WaterSense reference time |
+| `button.<program_name>_increase_duration` | Increase all active zone durations by 5% of each zone's WaterSense reference time |
+| `button.<program_name>_decrease_duration` | Decrease all active zone durations by 5% of each zone's WaterSense reference time |
 | `button.rainmachine_pause_watering` | Send a pause command using the duration configured in `number.rainmachine_pause_duration` |
 | `button.<zone>_start_manual` | Start the zone for the duration set in `number.<zone>_manual_duration`; triggers a zone run countdown |
+| `button.<zone>_apply_et_coefficient` | Write the pending ET coefficient value to the device and refresh zone properties (disabled by default, config category) |
 
 ### Select
 
@@ -169,8 +172,9 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 
 - `uid` — hardware zone ID (always available)
 - `zid` — same as `uid`; the field name used in the watering queue API (always available)
+- `et_coefficient` — zone ET coefficient (evapotranspiration adjustment factor, 0.01–2.0); read from device every 5 min via slow coordinator; `null` if not available
 - `running` — current queue status: localized string (`"In irrigazione"` / `"Watering"` when active, `"In attesa"` / `"Queued"` when waiting in queue); `null` when zone is not in queue
-- `remaining` — seconds remaining for this zone’s current run; `null` when not in queue. Updated every 10 seconds.
+- `remaining` — seconds remaining for this zone's current run; `null` when not in queue. Updated every 10 seconds.
 - `machine_duration` — duration in seconds computed by RainMachine for this run (weather-adjusted); `null` when not in queue. Varies per zone and per program.
 - `flag` — localized reason string for the current watering state (e.g. `"Irrigazione normale"` / `"Normal watering"`, `"Interrotto dal sensore pioggia"` / `"Stopped by rain sensor"`); `null` when not in queue
 - `last_run_start` / `last_run_end` — start and end timestamps of the previous run
@@ -190,7 +194,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `enabled` — `on` or `off` (program active state)
 - `next_run` / `last_run` — next and last run timestamps
 - `start_time` — scheduled start time (HH:MM)
-- `frequency` — translated frequency label (e.g. “Daily”, “Ogni giorno”)
+- `frequency` — translated frequency label (e.g. "Daily", "Ogni giorno")
 - `<zone name>` — planned duration in seconds for each HA-enabled zone (0 if not active in this program)
 - `<zone name>_type` — `suggested` (WaterSense adaptive), `custom` (user-set fixed duration), or `not set` (zone not active in this program); translated per HA language
 - `total_duration` — total planned seconds across all active zones
@@ -227,7 +231,7 @@ Each HA-enabled zone and each enabled program exposes a countdown sensor (diagno
 - **`sensor.<zone>_run_countdown`** — remaining time for the currently running zone as `M:SS` (e.g. `5:30`). Returns `null` when the zone is not running.
 - **`sensor.<program>_run_countdown`** — same for the whole program.
 
-The value comes directly from the device’s `remaining` field in the watering queue, which already accounts for weather-adaptive adjustments. The sensor updates every 10 seconds (fast coordinator). It works for both scheduled and manual starts — when started from HA via the zone switch, the coordinator refreshes immediately so the countdown appears within 1–2 seconds.
+The value comes directly from the device's `remaining` field in the watering queue, which already accounts for weather-adaptive adjustments. The sensor updates every 10 seconds (fast coordinator). It works for both scheduled and manual starts — when started from HA via the zone switch, the coordinator refreshes immediately so the countdown appears within 1–2 seconds.
 
 The `remaining_seconds` attribute is also available for use in automations.
 
@@ -244,6 +248,22 @@ Three entities work together to pause and monitor all active irrigation:
 2. Press `button.rainmachine_pause_watering`.
 3. Monitor `sensor.rainmachine_pause_countdown` to track remaining pause time.
 4. To cancel early, set `number.rainmachine_pause_duration` to `0` and press the button again, or simply start a zone/program.
+
+## ET Coefficient
+
+The ET coefficient (`ETcoef`) is a per-zone WaterSense adjustment factor (range 0.01–2.0) that scales the reference evapotranspiration used to compute automatic irrigation durations.
+
+Three ways to interact with it:
+
+- **`switch.<zone>` attribute `et_coefficient`** — always available on every zone run switch; read from the device every 5 minutes via the slow coordinator. Use this for read-only monitoring and automations.
+- **`number.<zone>_et_coefficient`** — optional config entity (disabled by default). Reads the current value from the device every 5 minutes. When you change the value in HA, it is stored as a pending value and does **not** immediately write to the device; the displayed value reflects your pending change until the button is pressed or HA is restarted.
+- **`button.<zone>_apply_et_coefficient`** — optional config entity (disabled by default). Press to write the pending ET coefficient value to the device (`POST /api/4/zone/{uid}/properties`), clear the pending value, and trigger an immediate slow coordinator refresh. If no pending value exists, the current device value is re-sent.
+
+**Typical usage:**
+1. Enable `number.<zone>_et_coefficient` and `button.<zone>_apply_et_coefficient` for the desired zone in **Settings** → **Devices & Services** → **RainMachine Pro** → entity list.
+2. Set `number.<zone>_et_coefficient` to the desired value (e.g. `1.2`).
+3. Press `button.<zone>_apply_et_coefficient`.
+4. After ~5 seconds the slow coordinator refreshes and `switch.<zone>` attribute `et_coefficient` reflects the new value.
 
 ## Cycle & Soak
 
@@ -267,9 +287,9 @@ To switch to automatic mode, select `auto`. To disable cycle & soak entirely, se
 
 ## Irrigation Forecast
 
-For each enabled program, 8 sensors expose irrigation forecast data — one for yesterday’s actual run and one for each of the next 7 days:
+For each enabled program, 8 sensors expose irrigation forecast data — one for yesterday's actual run and one for each of the next 7 days:
 
-- **`sensor.rainmachine_<program>_irrigation_forecast_y`** — yesterday’s actual irrigation. State = total scheduled seconds (`userDuration`). Source: `/api/4/watering/log/details`.
+- **`sensor.rainmachine_<program>_irrigation_forecast_y`** — yesterday's actual irrigation. State = total scheduled seconds (`userDuration`). Source: `/api/4/watering/log/details`.
 - **`sensor.rainmachine_<program>_irrigation_forecast_0`** … **`_6`** — 7-day irrigation forecast (day 0 = today, day 6 = six days from now). State = total `scheduledWateringTime` in seconds. Source: `/api/4/dailystats/details`.
 
 All 8 sensors share the same attribute structure, with values per zone (localized attribute names):
@@ -313,10 +333,10 @@ For each HA-enabled zone in each enabled program, three CONFIG-category entities
 
 Each enabled program exposes two button entities:
 
-- **`button.<program>_increase_duration`** — adds 5% of each zone’s WaterSense `referenceTime` to its current duration
-- **`button.<program>_decrease_duration`** — subtracts 5% of each zone’s WaterSense `referenceTime` from its current duration
+- **`button.<program>_increase_duration`** — adds 5% of each zone's WaterSense `referenceTime` to its current duration
+- **`button.<program>_decrease_duration`** — subtracts 5% of each zone's WaterSense `referenceTime` from its current duration
 
-The step is fixed at **5% of `referenceTime`** (the WaterSense 100% reference for each zone), which matches the RainMachine app’s +/− behaviour. The resulting `userPercentage` is clamped to the range 5%–200%.
+The step is fixed at **5% of `referenceTime`** (the WaterSense 100% reference for each zone), which matches the RainMachine app's +/− behaviour. The resulting `userPercentage` is clamped to the range 5%–200%.
 
 For **custom zones** (`duration > 0`): `current_pct` is derived from `duration / referenceTime`; both `userPercentage` and `duration` are updated (`duration = round(referenceTime × new_pct)`).
 For **suggested zones** (`duration == 0`): only `userPercentage` is updated; the device recomputes the actual duration automatically.
@@ -346,7 +366,7 @@ Each enabled program exposes a `switch.<program>_weather_adaptive_watering` enti
 - **ON** — the program uses internet weather data to adjust watering (sets `ignoreInternetWeather = false`)
 - **OFF** — the program ignores internet weather and waters with fixed durations (sets `ignoreInternetWeather = true`)
 
-This maps directly to the “ignore Internet Weather” checkbox in the RainMachine app.
+This maps directly to the "ignore Internet Weather" checkbox in the RainMachine app.
 
 ## Adaptive Frequency
 
@@ -355,11 +375,11 @@ Each enabled program exposes a `switch.<program>_use_adaptive_frequency` entity 
 - **ON** — adaptive frequency adjustment is enabled at 50% (sets `freq_modified = 50`)
 - **OFF** — adaptive frequency adjustment is disabled (sets `freq_modified = 0`)
 
-This maps directly to the “adaptive frequency percentage” field in the RainMachine app.
+This maps directly to the "adaptive frequency percentage" field in the RainMachine app.
 
 ## How It Works
 
-The integration polls your RainMachine’s local API using two independent coordinators:
+The integration polls your RainMachine's local API using two independent coordinators:
 
 - **Slow coordinator** (default every 5 min) — weather, forecast, restrictions, rain delay, provision, firmware, zone properties, watering details, irrigation forecast
 - **Fast coordinator** (default every 10 s) — zone list, program list, watering queue
@@ -370,13 +390,14 @@ The integration polls your RainMachine’s local API using two independent coord
 |----------|------|
 | `/api/4/auth/login` | Authentication |
 | `/api/4/parser` | Weather parser status |
-| `/api/4/watering/log/details` | Today’s watering summary (all runs including manual), per-zone details, and yesterday’s irrigation forecast per program |
+| `/api/4/watering/log/details` | Today's watering summary (all runs including manual), per-zone details, and yesterday's irrigation forecast per program |
 | `/api/4/watering/queue` | Currently running zones/programs (remaining seconds, machine duration, watering flag) |
 | `/api/4/watering/pause` | Pause all active watering (POST) and check remaining pause time (GET) |
 | `/api/4/dailystats/details` | 7-day irrigation forecast per program |
 | `/api/4/mixer` | Forecast conditions |
 | `/api/4/zone` | Zone list and status (includes master valve if present) |
-| `/api/4/zone/properties` | Zone WaterSense properties (referenceTime, userPercentage) |
+| `/api/4/zone/properties` | Zone WaterSense properties per zone (referenceTime, userPercentage, ETcoef) |
+| `/api/4/zone/{id}/properties` | Write zone properties per zone (active, ETcoef) |
 | `/api/4/program` | Program list and status |
 | `/api/4/program/{id}` | Read/update program (start time, frequency, duration type, duration adjustment, weather adaptive, adaptive frequency, cycle & soak) |
 | `/api/4/restrictions/currently` | Active restrictions |
@@ -387,15 +408,15 @@ The integration polls your RainMachine’s local API using two independent coord
 
 ## Troubleshooting
 
-**“Unable to connect”** — Verify your RainMachine IP and port. Try opening `https://<IP>:8080` in a browser.
+**"Unable to connect"** — Verify your RainMachine IP and port. Try opening `https://<IP>:8080` in a browser.
 
-**“Invalid password”** — Same password used in the RainMachine app.
+**"Invalid password"** — Same password used in the RainMachine app.
 
 **Zone sensors show 0** — Normal if no watering occurred today.
 
-**Zone numbering differs from the RainMachine app** — Your controller likely has a master valve. It appears in the zone list under its own name (e.g. “Master Valve”) and can be enabled or disabled in the integration configuration. The app hides it from the numbered zone list; this integration shows it explicitly.
+**Zone numbering differs from the RainMachine app** — Your controller likely has a master valve. It appears in the zone list under its own name (e.g. "Master Valve") and can be enabled or disabled in the integration configuration. The app hides it from the numbered zone list; this integration shows it explicitly.
 
-**Statistics graph shows “No statistics found”** — Statistics start collecting after installation; historical data is not available.
+**Statistics graph shows "No statistics found"** — Statistics start collecting after installation; historical data is not available.
 
 **Slow response / timeouts** — Increase the timeout in integration options.
 
