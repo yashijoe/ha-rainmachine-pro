@@ -31,7 +31,7 @@ async def async_setup_entry(
         RainMachinePauseButton(coordinator, entry),
     ]
 
-    # Per-zone: manual start + ET coefficient apply
+    # Per-zone: manual start + ET coefficient apply + stop/cancel
     for uid_str, zone_cfg in zones_config.items():
         if not zone_cfg.get("enabled", False):
             continue
@@ -39,6 +39,7 @@ async def async_setup_entry(
         zone_name = zone_cfg.get("name") or f"Zone {uid}"
         entities.append(RainMachineZoneStartButton(coordinator, entry, uid, zone_name))
         entities.append(RainMachineZoneApplyETCoefButton(coordinator, entry, uid, zone_name))
+        entities.append(RainMachineZoneStopButton(coordinator, entry, uid, zone_name))
 
     for program in fast_coordinator.data.get("programs", []):
         pid = program["uid"]
@@ -153,6 +154,29 @@ class RainMachineZoneApplyETCoefButton(RainMachineBaseEntity, ButtonEntity):
             _LOGGER.info("ET coefficient for zone %s set to %s", self._uid, value)
         except Exception as err:
             _LOGGER.error("Failed to apply ET coefficient for zone %s: %s", self._uid, err)
+
+
+class RainMachineZoneStopButton(RainMachineBaseEntity, ButtonEntity):
+    """Button to stop a running zone or cancel a queued zone."""
+
+    _attr_icon = "mdi:stop-circle-outline"
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: RainMachineProCoordinator, entry: ConfigEntry, uid: int, zone_name: str) -> None:
+        super().__init__(coordinator, entry)
+        self._uid = uid
+        self._attr_name = f"{zone_name} stop zone"
+        self._attr_unique_id = f"{entry.entry_id}_zone_{uid}_stop"
+
+    async def async_press(self) -> None:
+        try:
+            await self.coordinator.client.action_stop_zone(self._uid)
+            fast_coord = self.hass.data[DOMAIN].get(f"{self._entry.entry_id}_fast")
+            if fast_coord:
+                await fast_coord.async_request_refresh()
+            _LOGGER.info("Zone %s stopped/cancelled", self._uid)
+        except Exception as err:
+            _LOGGER.error("Failed to stop zone %s: %s", self._uid, err)
 
 
 class RainMachineProgramIncreaseButton(RainMachineBaseEntity, ButtonEntity):

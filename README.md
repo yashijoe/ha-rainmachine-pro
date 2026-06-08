@@ -20,6 +20,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Cycle & Soak** — per-program cycle & soak control: off, auto (device decides), or custom (2–50 cycles, 0–300 min soak)
 - **Irrigation forecast** — 8 sensors per enabled program: yesterday's actual irrigation and a 7-day forecast (days 0–6), each with scheduled and computed seconds per zone
 - **Per-zone manual irrigation** — per-zone configurable duration (0.5–300 min) and a start button to immediately run that zone for the set duration
+- **Per-zone stop/cancel** — per-zone button to stop a running zone or cancel a queued zone in a program without affecting other zones
 - **ET coefficient** — per-zone ET coefficient (0.01–2.0) exposed as a zone switch attribute (updated every 5 min) and as an optional config number entity with a dedicated apply button
 - **Editable program start time** — set each program's scheduled start time directly from Home Assistant
 - **Editable program frequency** — set each program's irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
@@ -143,6 +144,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `button.<program_name>_decrease_duration` | Decrease all active zone durations by 5% of each zone's WaterSense reference time |
 | `button.rainmachine_pause_watering` | Send a pause command using the duration configured in `number.rainmachine_pause_duration` |
 | `button.<zone>_start_manual` | Start the zone for the duration set in `number.<zone>_manual_duration`; triggers a zone run countdown |
+| `button.<zone>_stop_zone` | Stop a running zone or cancel a queued zone in a program without affecting other zones (disabled by default) |
 | `button.<zone>_apply_et_coefficient` | Write the pending ET coefficient value to the device and refresh zone properties (disabled by default, config category) |
 
 ### Select
@@ -248,6 +250,17 @@ Three entities work together to pause and monitor all active irrigation:
 2. Press `button.rainmachine_pause_watering`.
 3. Monitor `sensor.rainmachine_pause_countdown` to track remaining pause time.
 4. To cancel early, set `number.rainmachine_pause_duration` to `0` and press the button again, or simply start a zone/program.
+
+## Stop / Cancel a Queued Zone
+
+When a program is running, zones that have not yet started are queued on the device. The `button.<zone>_stop_zone` entity (disabled by default) lets you cancel a specific queued zone without stopping the entire program or waiting for its turn.
+
+- **`button.<zone>_stop_zone`** — sends `POST /api/4/zone/{uid}/stop` to the device. Works whether the zone is currently running or queued. The fast coordinator refreshes immediately so the queue state updates within 1–2 seconds.
+
+**Typical usage:**
+1. Enable `button.<zone>_stop_zone` for the desired zone(s) in **Settings** → **Devices & Services** → **RainMachine Pro** → entity list.
+2. While a program is running, press the button for any zone you want to cancel before it starts.
+3. The zone is removed from the queue; the program continues with the remaining zones unaffected.
 
 ## ET Coefficient
 
@@ -387,7 +400,7 @@ The integration polls your RainMachine's local API using two independent coordin
 **API endpoints used:**
 
 | Endpoint | Data |
-|----------|------|
+|----------|----- |
 | `/api/4/auth/login` | Authentication |
 | `/api/4/parser` | Weather parser status |
 | `/api/4/watering/log/details` | Today's watering summary (all runs including manual), per-zone details, and yesterday's irrigation forecast per program |
@@ -398,6 +411,8 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/zone` | Zone list and status (includes master valve if present) |
 | `/api/4/zone/properties` | Zone WaterSense properties per zone (referenceTime, userPercentage, ETcoef) |
 | `/api/4/zone/{id}/properties` | Write zone properties per zone (active, ETcoef) |
+| `/api/4/zone/{id}/start` | Start a zone for a given duration |
+| `/api/4/zone/{id}/stop` | Stop a running zone or cancel a queued zone |
 | `/api/4/program` | Program list and status |
 | `/api/4/program/{id}` | Read/update program (start time, frequency, duration type, duration adjustment, weather adaptive, adaptive frequency, cycle & soak) |
 | `/api/4/restrictions/currently` | Active restrictions |
