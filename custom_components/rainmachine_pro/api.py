@@ -245,6 +245,25 @@ class RainMachineClient:
             data["frequency"] = freq
             return await self._post(session, f"program/{pid}", data)
 
+    async def action_shift_program_next_run(self, pid: int, days: int) -> dict:
+        """GET full program, shift its start-date anchor by `days` relative to
+        the device's current nextRun, POST back. Re-phases the Every-N-days
+        cycle."""
+        async with aiohttp.ClientSession() as session:
+            await self.authenticate(session)
+            data = await self._get(session, f"program/{pid}")
+            cur = data.get("nextRun")
+            if not cur:
+                raise RainMachineConnectionError(
+                    f"Program {pid} has no scheduled next run to shift"
+                )
+            new = (date.fromisoformat(cur) + timedelta(days=days)).isoformat()
+            # startDate is the anchor and wins over nextRun server-side; set
+            # both so the POSTed object is internally consistent.
+            data["startDate"] = new
+            data["nextRun"] = new
+            return await self._post(session, f"program/{pid}", data)
+
     async def action_set_global_restriction(self, payload: dict) -> dict:
         return await self._action("restrictions/global", payload)
 

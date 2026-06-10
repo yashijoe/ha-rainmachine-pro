@@ -1,0 +1,20 @@
+shift_program_next_run:
+  name: Shift program next run
+  description: >-
+    Move a program's next scheduled run earlier or later by whole days.
+    Applies to Every-N-days programs; re-phases the watering cycle.
+  target:
+    entity:
+      integration: rainmachine_pro
+      domain: switch
+  fields:
+    days:
+      name: Days
+      description: Positive moves the next run later, negative moves it earlier.
+      required: true
+      example: 1
+      selector:
+        number:
+          min: -31
+          max: 31
+          mode: box
