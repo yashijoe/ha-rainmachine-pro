@@ -2,10 +2,13 @@
 
 import logging
 
+import voluptuous as vol
+
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES, FLAG_MAP, ZONE_RUNNING_MAP
@@ -189,6 +192,13 @@ async def async_setup_entry(
     entities.append(RainMachineExtraWaterSwitch(coordinator, entry))
 
     async_add_entities(entities)
+
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        "shift_program_next_run",
+        {vol.Required("days"): vol.All(vol.Coerce(int), vol.Range(min=-31, max=31))},
+        "async_shift_next_run",
+    )
 
 
 class RainMachineZoneRunSwitch(RainMachineBaseEntity, SwitchEntity):
@@ -421,6 +431,15 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to stop program %s: %s", self._pid, err)
+
+    async def async_shift_next_run(self, days: int) -> None:
+        """Entity-service handler: shift this program's next run by `days`."""
+        try:
+            await self.coordinator.client.action_shift_program_next_run(self._pid, days)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to shift next run for program %s: %s", self._pid, err)
+            raise
 
 
 class RainMachineProgramEnabledSwitch(RainMachineBaseEntity, SwitchEntity):

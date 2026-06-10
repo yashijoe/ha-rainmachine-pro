@@ -24,6 +24,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **ET coefficient** — per-zone ET coefficient (0.01–2.0) exposed as a zone switch attribute (updated every 5 min) and as an optional config number entity with a dedicated apply button
 - **Editable program start time** — set each program's scheduled start time directly from Home Assistant
 - **Editable program frequency** — set each program's irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
+- **Shift program next run** — action to move a program's next scheduled run earlier or later by whole days (re-phases Every-N-days cycles)
 - **Weather adaptive watering** — per-program switch to enable/disable the use of internet weather data for adaptive watering
 - **Adaptive frequency** — per-program switch to enable/disable adaptive watering frequency adjustment
 - **Zone and program control** — start/stop irrigation zones and programs, enable/disable them
@@ -371,6 +372,25 @@ Each enabled program exposes three types of entities for schedule editing (all `
 3. **`switch.<program>_frequency_Mon` … `switch.<program>_frequency_Sun`** — one toggle per weekday. Toggling a day immediately updates the device if the program is already set to *Selected days*; otherwise the state is stored as a pending value.
 
 Only one frequency type is active at a time. Switching type via the select entity preserves previously configured parameters where possible (e.g. switching back to *Every N days* restores the last used interval).
+
+## Shift Program Next Run
+
+The `rainmachine_pro.shift_program_next_run` action moves a program's next scheduled run earlier or later by whole days, targeting the program's run switch:
+
+```yaml
+action: rainmachine_pro.shift_program_next_run
+target:
+  entity_id: switch.rainmachine_main_garden
+data:
+  days: 1   # positive = later, negative = earlier (−31 to 31)
+```
+
+It works by re-anchoring the program's `startDate` to the device's current `nextRun` plus `days`, which re-phases the watering cycle — the same mechanism as the "next run" date picker in the RainMachine app.
+
+- Meaningful for **Every N days** programs, where the start-date anchor sets the phase of the cycle. Daily programs always run today/tomorrow regardless of anchor; weekday/odd-even schedules are not affected by a one-day nudge.
+- The device won't schedule a run in the past: shifting backward onto a time slot that has already elapsed today rolls forward to the next cycle instead.
+- The program must currently have a next run (enabled and schedulable); otherwise the call fails.
+- The shift is computed from a fresh read of the device's `nextRun`, so repeated calls accumulate correctly.
 
 ## Weather Adaptive Watering
 
