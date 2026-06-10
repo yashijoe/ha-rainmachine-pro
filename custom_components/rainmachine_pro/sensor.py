@@ -435,11 +435,13 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
         except (KeyError, IndexError, TypeError):
             return None, 0
         today = datetime.today().date()
-        yesterday = today - timedelta(days=1)
         selected = []
         for daily in daily_values:
-            day_date = datetime.strptime(daily["day"], "%Y-%m-%d %H:%M:%S").date()
-            if yesterday <= day_date <= yesterday + timedelta(days=6):
+            try:
+                day_date = datetime.strptime(daily["day"], "%Y-%m-%d %H:%M:%S").date()
+            except (ValueError, KeyError):
+                continue
+            if day_date >= today:
                 selected.append((day_date, daily))
         selected.sort(key=lambda x: x[0])
         if self._index < len(selected):
@@ -851,7 +853,7 @@ class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub_timer:
-            self._unsub_timer()
+            self._unsub_timer()  
             self._unsub_timer = None
 
     @callback
