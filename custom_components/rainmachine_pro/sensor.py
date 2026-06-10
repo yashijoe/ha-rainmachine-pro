@@ -433,22 +433,26 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
         try:
             daily_values = forecast["mixerData"][0]["dailyValues"]
         except (KeyError, IndexError, TypeError):
-            return None, 0
+            return None, self._index
         today = datetime.today().date()
+        yesterday = today - timedelta(days=1)
         selected = []
         for daily in daily_values:
             try:
                 day_date = datetime.strptime(daily["day"], "%Y-%m-%d %H:%M:%S").date()
             except (ValueError, KeyError):
                 continue
-            if day_date >= today:
+            if yesterday <= day_date <= yesterday + timedelta(days=6):
                 selected.append((day_date, daily))
+        yesterday_data = self.coordinator.data.get("forecast_yesterday")
+        if yesterday_data and not any(d == yesterday for d, _ in selected):
+            selected.append((yesterday, yesterday_data))
         selected.sort(key=lambda x: x[0])
         if self._index < len(selected):
             day_date, data = selected[self._index]
             delta = (day_date - today).days
             return data, delta
-        return None, 0
+        return None, self._index
 
     @property
     def name(self):
