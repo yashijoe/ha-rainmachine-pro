@@ -182,7 +182,11 @@ class RainMachineClient:
         return await self._action(f"zone/{zid}/properties", {"active": active})
 
     async def action_set_zone_et_coef(self, uid: int, value: float) -> dict:
-        return await self._action(f"zone/{uid}/properties", {"ETcoef": round(value, 4)})
+        async with aiohttp.ClientSession() as session:
+            await self.authenticate(session)
+            data = await self._get(session, f"zone/{uid}/properties")
+            data["ETcoef"] = round(value, 4)
+            return await self._post(session, f"zone/{uid}/properties", data)
 
     async def action_start_program(self, pid: int) -> dict:
         return await self._action(f"program/{pid}/start", {"pid": pid})
