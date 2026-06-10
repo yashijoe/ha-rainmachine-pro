@@ -123,6 +123,12 @@ class RainMachineClient:
     async def get_forecast(self, session: aiohttp.ClientSession) -> dict:
         return await self._get(session, "mixer", query="format=json")
 
+    async def get_forecast_yesterday(self, session: aiohttp.ClientSession) -> dict | None:
+        yesterday = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+        data = await self._get(session, f"mixer/{yesterday}", query="format=json")
+        entries = data.get("mixerDataByDate", [])
+        return entries[0] if entries else None
+
     async def get_rain_delay(self, session: aiohttp.ClientSession) -> dict:
         return await self._get(session, "restrictions/raindelay")
 
@@ -370,6 +376,7 @@ class RainMachineClient:
                 ("details",                  self.get_watering_details(session)),
                 ("watering_yesterday",       self.get_watering_details_yesterday(session)),
                 ("forecast",                 self.get_forecast(session)),
+                ("forecast_yesterday",       self.get_forecast_yesterday(session)),
                 ("raindelay",                self.get_rain_delay(session)),
                 ("zones",                    self.get_zones(session)),
                 ("programs",                 self.get_programs(session)),
