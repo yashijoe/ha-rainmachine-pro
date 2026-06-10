@@ -33,7 +33,7 @@ class RainMachineProCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict:
         """Fetch data from RainMachine."""
         try:
-            return await self.client.fetch_all_data()
+            return await self.client.fetch_all_data(previous_data=self.data)
         except RainMachineApiError as err:
             raise UpdateFailed(f"Error fetching RainMachine data: {err}") from err
 

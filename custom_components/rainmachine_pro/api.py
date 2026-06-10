@@ -359,7 +359,7 @@ class RainMachineClient:
                     data[key] = []
             return data
 
-    async def fetch_all_data(self) -> dict:
+    async def fetch_all_data(self, previous_data: dict | None = None) -> dict:
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             data = {}
@@ -385,5 +385,8 @@ class RainMachineClient:
                     data[key] = await coro
                 except RainMachineApiError as err:
                     _LOGGER.warning("Failed to fetch %s: %s", key, err)
-                    data[key] = [] if key in _LIST_KEYS else {}
+                    if previous_data and key in previous_data:
+                        data[key] = previous_data[key]
+                    else:
+                        data[key] = [] if key in _LIST_KEYS else {}
             return data
