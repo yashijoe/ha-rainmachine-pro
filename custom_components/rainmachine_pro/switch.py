@@ -391,6 +391,14 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
             if freq is not None:
                 attrs["frequency"] = _frequency_label(freq, lang)
 
+            # Cycle & Soak repeats each zone's watering `cycles` times (with soak
+            # rest in between, which is not watering time), so the device reports
+            # per-zone and total *watering* time as base x cycles. Mirror that. In
+            # auto mode (cs_on with cycles == -1) the firmware picks the count
+            # dynamically and it's absent from the API, so leave the base as-is.
+            cs_cycles = int(prog.get("cycles", -1))
+            cs_mult = cs_cycles if prog.get("cs_on", False) and cs_cycles > 0 else 1
+
             total_duration = 0
             for wt in prog.get("wateringTimes", []):
                 zid = wt["id"]
@@ -404,10 +412,10 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
                     seconds = 0
                 elif fixed_dur > 0:
                     duration_type = "custom"
-                    seconds = fixed_dur
+                    seconds = fixed_dur * cs_mult
                 else:
                     duration_type = "suggested"
-                    seconds = _zone_planned_seconds(wt, zone_properties)
+                    seconds = _zone_planned_seconds(wt, zone_properties) * cs_mult
                 attrs[ha_name] = seconds
                 attrs[f"{ha_name}_type"] = type_labels[duration_type]
                 total_duration += seconds
