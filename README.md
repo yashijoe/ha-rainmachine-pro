@@ -23,6 +23,7 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Per-zone stop/cancel** — per-zone button to stop a running zone or cancel a queued zone in a program without affecting other zones
 - **ET coefficient** — per-zone ET coefficient (0.01–2.0) exposed as a zone switch attribute (updated every 5 min) and as an optional config number entity with a dedicated apply button
 - **Editable program start time** — set each program's scheduled start time directly from Home Assistant
+- **Sun-based start times** — start (or finish) each program a configurable number of minutes before/after sunrise or sunset, matching the device's start time modes
 - **Editable program frequency** — set each program's irrigation schedule (Daily, Every N days, Odd/Even days, or specific weekdays) directly from Home Assistant
 - **Shift program next run** — action to move a program's next scheduled run earlier or later by whole days (re-phases Every-N-days cycles)
 - **Weather adaptive watering** — per-program switch to enable/disable the use of internet weather data for adaptive watering
@@ -135,6 +136,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `number.<zone>_et_coefficient` | Zone ET coefficient — WaterSense evapotranspiration adjustment factor; reads from device every 5 min, stores pending value until applied via the apply button (disabled by default, config category) | 0.01–2.0, step 0.01 |
 | `number.<program>_cycle_soak_cycles` | Number of cycles for Cycle & Soak (custom mode; pending when not in custom mode) | 2–50, step 1 |
 | `number.<program>_cycle_soak_min` | Soak time between cycles (custom mode; pending when not in custom mode) | 0–300 min, step 1 |
+| `number.<program>_sun_offset` | Minutes before/after sunrise/sunset for sun-based start time modes (pending when mode is *Time of day*, config category) | 0–720 min, step 1 |
 
 ### Button
 
@@ -156,12 +158,13 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `select.<program_name>_frequency` | Irrigation frequency type | Daily / Every N days / Odd days / Even days / Selected days |
 | `select.<program>_<zone>_duration_type` | Duration type for a zone in a program (config category) | `suggested` / `custom` / `not set` |
 | `select.<program>_cycle_soak_mode` | Cycle & Soak mode for the program (config category) | `off` / `auto` / `custom` |
+| `select.<program>_start_time_mode` | Start time mode for the program (config category) | `time of day` / `before/after sunrise` / `before/after sunset` / `finish before/after sunrise` / `finish before/after sunset` |
 
 ### Time
 
 | Entity | Description |
 |--------|-------------|
-| `time.<program_name>_start_time` | Scheduled start time for the program (editable) |
+| `time.<program_name>_start_time` | Scheduled start time for the program (editable). In sun-based modes it shows the device-computed start time; setting it switches the program back to *Time of day* mode |
 
 ### Update
 
@@ -196,7 +199,9 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 
 - `enabled` — `on` or `off` (program active state)
 - `next_run` / `last_run` — next and last run timestamps
-- `start_time` — scheduled start time (HH:MM)
+- `start_time` — scheduled start time (HH:MM); computed by the device in sun-based modes
+- `start_time_mode` — start time mode key (`time_of_day`, `before_sunrise`, `after_sunrise`, `before_sunset`, `after_sunset`, `finish_before_sunrise`, `finish_after_sunrise`, `finish_before_sunset`, `finish_after_sunset`)
+- `sun_offset_minutes` — minutes before/after sunrise/sunset (only present in sun-based modes)
 - `frequency` — translated frequency label (e.g. "Daily", "Ogni giorno")
 - `<zone name>` — planned duration in seconds for each HA-enabled zone (0 if not active in this program)
 - `<zone name>_type` — `suggested` (WaterSense adaptive), `custom` (user-set fixed duration), or `not set` (zone not active in this program); translated per HA language
@@ -372,6 +377,19 @@ Each enabled program exposes three types of entities for schedule editing (all `
 3. **`switch.<program>_frequency_Mon` … `switch.<program>_frequency_Sun`** — one toggle per weekday. Toggling a day immediately updates the device if the program is already set to *Selected days*; otherwise the state is stored as a pending value.
 
 Only one frequency type is active at a time. Switching type via the select entity preserves previously configured parameters where possible (e.g. switching back to *Every N days* restores the last used interval).
+
+## Sun-Based Start Times
+
+Each enabled program exposes two entities for start time mode editing (both `EntityCategory.CONFIG`), mirroring the START TIME section of the device web UI:
+
+1. **`select.<program>_start_time_mode`** — choose how the start time is determined:
+   - *Time of day* — fixed HH:MM start (set via `time.<program>_start_time`)
+   - *Before/After sunrise*, *Before/After sunset* — the program **starts** N minutes relative to the sun event
+   - *Finish before/after sunrise*, *Finish before/after sunset* — the program **finishes** N minutes relative to the sun event (the device derives the start time from the program's total duration; depending on duration, the start may be limited to midnight)
+
+2. **`number.<program>_sun_offset`** — the offset N (0–720 minutes). Changing it immediately updates the device if the program is already in a sun-based mode; otherwise the value is stored as pending and applied next time a sun-based mode is selected.
+
+In sun-based modes the device recomputes the effective start time daily from its location's sunrise/sunset; `time.<program>_start_time` reflects the computed value. Setting the time entity to an explicit HH:MM switches the program back to *Time of day* mode, matching the radio-button coupling in the device UI. Switching between sun-based modes (e.g. *Before sunrise* → *After sunset*) preserves the current offset minutes.
 
 ## Shift Program Next Run
 

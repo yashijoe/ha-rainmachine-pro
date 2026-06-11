@@ -11,7 +11,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES, FLAG_MAP, ZONE_RUNNING_MAP
+from .const import (
+    DOMAIN,
+    CONF_PROGRAMS,
+    CONF_ZONES,
+    FLAG_MAP,
+    START_TIME_PARAMS_MODE,
+    ZONE_RUNNING_MAP,
+)
 from .coordinator import RainMachineProCoordinator
 from .entity import RainMachineBaseEntity
 
@@ -388,6 +395,16 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
                 attrs["last_run"] = last_run
             if start_time:
                 attrs["start_time"] = start_time
+            stp = prog.get("startTimeParams") or {}
+            stp_type = int(stp.get("type", 0))
+            if stp_type != 0:
+                sign = 1 if int(stp.get("offsetSign", -1)) >= 0 else -1
+                attrs["start_time_mode"] = START_TIME_PARAMS_MODE.get(
+                    (stp_type, sign), "time_of_day"
+                )
+                attrs["sun_offset_minutes"] = int(stp.get("offsetMinutes", 0))
+            else:
+                attrs["start_time_mode"] = "time_of_day"
             if freq is not None:
                 attrs["frequency"] = _frequency_label(freq, lang)
 

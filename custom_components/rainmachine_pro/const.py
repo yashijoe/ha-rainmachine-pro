@@ -17,6 +17,23 @@ DEFAULT_SCAN_INTERVAL = 5       # minutes
 DEFAULT_SCAN_INTERVAL_FAST = 10  # seconds
 DEFAULT_TIMEOUT = 20             # seconds
 
+# Program startTimeParams: option -> (type, offsetSign).
+# type: 0 = fixed time of day, 1/2 = start relative to sunrise/sunset,
+# 3/4 = finish relative to sunrise/sunset. offsetSign: -1 before, 1 after.
+START_TIME_MODE_PARAMS = {
+    "time_of_day": (0, 0),
+    "before_sunrise": (1, -1),
+    "after_sunrise": (1, 1),
+    "before_sunset": (2, -1),
+    "after_sunset": (2, 1),
+    "finish_before_sunrise": (3, -1),
+    "finish_after_sunrise": (3, 1),
+    "finish_before_sunset": (4, -1),
+    "finish_after_sunset": (4, 1),
+}
+
+START_TIME_PARAMS_MODE = {v: k for k, v in START_TIME_MODE_PARAMS.items()}
+
 FLAG_MAP = {
     "en": {
         0: "Normal watering",

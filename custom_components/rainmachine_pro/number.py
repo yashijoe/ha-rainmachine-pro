@@ -91,6 +91,15 @@ async def async_setup_entry(
         entities.append(RainMachineProgramCycleSoakCyclesNumber(fast_coordinator, entry, pid, name))
         entities.append(RainMachineProgramCycleSoakMinNumber(fast_coordinator, entry, pid, name))
 
+        # Init pending sun offset state
+        sun_offset_key = f"{entry.entry_id}_prog_{pid}_sun_offset_min"
+        hass.data[DOMAIN].setdefault(sun_offset_key, 0)
+        stp = program.get("startTimeParams", {})
+        if int(stp.get("type", 0)) != 0:
+            hass.data[DOMAIN][sun_offset_key] = int(stp.get("offsetMinutes", 0))
+
+        entities.append(RainMachineProgramSunOffsetNumber(fast_coordinator, entry, pid, name))
+
         for wt in program.get("wateringTimes", []):
             zid = wt["id"]
             zone_cfg = zones_config.get(str(zid), {})
@@ -411,6 +420,70 @@ class RainMachineProgramCycleSoakMinNumber(CoordinatorEntity, NumberEntity):
                 await self.coordinator.async_request_refresh()
             except Exception as err:
                 _LOGGER.error("Failed to set cycle soak soak_min for program %s: %s", self._pid, err)
+
+
+class RainMachineProgramSunOffsetNumber(CoordinatorEntity, NumberEntity):
+    """Minutes before/after sunrise/sunset for a program's start time mode.
+
+    Reflects the device value while the program is sun-based; otherwise holds
+    a pending value applied when a sun mode is selected. Direction (before/
+    after) and reference (sunrise/sunset) come from the mode select."""
+
+    _attr_has_entity_name = True
+    _attr_native_min_value = 0
+    _attr_native_max_value = 720
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "min"
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:sun-clock-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._pid = pid
+        self._attr_name = f"{program_name} sun offset"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_sun_offset"
+
+    @property
+    def device_info(self):
+        return {"identifiers": {(DOMAIN, self._entry.entry_id)}}
+
+    def _get_program(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog
+        return None
+
+    @property
+    def native_value(self) -> float:
+        prog = self._get_program()
+        if prog:
+            stp = prog.get("startTimeParams", {})
+            if int(stp.get("type", 0)) != 0:
+                val = int(stp.get("offsetMinutes", 0))
+                self.hass.data[DOMAIN][f"{self._entry.entry_id}_prog_{self._pid}_sun_offset_min"] = val
+                return float(val)
+        return float(self.hass.data[DOMAIN].get(
+            f"{self._entry.entry_id}_prog_{self._pid}_sun_offset_min", 0
+        ))
+
+    async def async_set_native_value(self, value: float) -> None:
+        minutes = int(value)
+        self.hass.data[DOMAIN][f"{self._entry.entry_id}_prog_{self._pid}_sun_offset_min"] = minutes
+        self.async_write_ha_state()
+        prog = self._get_program()
+        stp = (prog or {}).get("startTimeParams", {})
+        type_ = int(stp.get("type", 0))
+        if type_ != 0:
+            sign = 1 if int(stp.get("offsetSign", -1)) >= 0 else -1
+            try:
+                await self.coordinator.client.action_set_program_start_time_params(
+                    self._pid, type_, sign, minutes
+                )
+                await self.coordinator.async_request_refresh()
+            except Exception as err:
+                _LOGGER.error("Failed to set sun offset for program %s: %s", self._pid, err)
 
 
 class RainMachineProgramZoneDurationNumber(CoordinatorEntity, NumberEntity, RestoreEntity):

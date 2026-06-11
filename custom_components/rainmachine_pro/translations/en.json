@@ -78,6 +78,19 @@
           "custom": "Custom",
           "not_set": "Not set"
         }
+      },
+      "program_start_time_mode": {
+        "state": {
+          "time_of_day": "Time of day",
+          "before_sunrise": "Before sunrise",
+          "after_sunrise": "After sunrise",
+          "before_sunset": "Before sunset",
+          "after_sunset": "After sunset",
+          "finish_before_sunrise": "Finish before sunrise",
+          "finish_after_sunrise": "Finish after sunrise",
+          "finish_before_sunset": "Finish before sunset",
+          "finish_after_sunset": "Finish after sunset"
+        }
       }
     }
   }
