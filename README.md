@@ -299,6 +299,8 @@ For each enabled program, three CONFIG-category entities control the cycle & soa
 
 To switch to automatic mode, select `auto`. To disable cycle & soak entirely, select `off`.
 
+The program switch's per-zone duration attributes and `total_duration` report each zone's **total watering time for the next run**, matching the controller's "total watering time" figure. For zones with a suggested (weather-adaptive) duration this includes the program's frequency multiplier — e.g. an every-2-days program waters 2× the daily reference per run. Cycle & soak splits this total into cycles with soak rest in between; it does not change the total.
+
 ## Irrigation Forecast
 
 For each enabled program, 8 sensors expose irrigation forecast data — one for yesterday's actual run and one for each of the next 7 days:

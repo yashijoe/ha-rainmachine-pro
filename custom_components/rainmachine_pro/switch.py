@@ -1,6 +1,7 @@
 """Switch platform for RainMachine Pro."""
 
 import logging
+from datetime import date, timedelta
 
 import voluptuous as vol
 
@@ -10,6 +11,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES, FLAG_MAP, ZONE_RUNNING_MAP
 from .coordinator import RainMachineProCoordinator
@@ -119,7 +121,56 @@ def _frequency_label(freq: dict, lang: str = "en") -> str:
     return f"type={ftype} param={param}"
 
 
-def _zone_planned_seconds(wt: dict, zone_properties: dict) -> int:
+def _next_run_date(prog: dict) -> date:
+    """Date the displayed durations apply to: the program's next run.
+
+    Falls back to today (HA-local) when nextRun is absent/unparseable, so the
+    date-dependent frequency multipliers still get a best-effort value.
+    """
+    try:
+        return date.fromisoformat(str(prog.get("nextRun")))
+    except (TypeError, ValueError):
+        return dt_util.now().date()
+
+
+def _frequency_multiplier(freq: dict | None, ref_date: date) -> int:
+    """Days of water need per run for the run on ref_date.
+
+    Mirrors firmware getMultipliers()[0] (the "future" value): a suggested
+    zone's total watering time is referenceTime x userPercentage x this
+    multiplier (rmPrograms.getProgramZoneDuration). Fixed durations are never
+    scaled. Cycle & soak does not enter here — it splits the total into cycles
+    without changing it.
+    """
+    if not freq:
+        return 1
+    try:
+        ftype = int(freq.get("type", 0))
+    except (TypeError, ValueError):
+        return 1
+    param = freq.get("param", "0")
+    if ftype == 1:  # every N days
+        try:
+            n = int(param)
+        except (TypeError, ValueError):
+            return 1
+        return n if n >= 1 else 1
+    if ftype == 2:  # selected weekdays: gap to the next scheduled day after ref_date
+        days = _param_to_days(param)
+        for d in range(1, 8):
+            if days[(ref_date.weekday() + d) % 7]:
+                return d
+        return 1  # firmware fallback when no day is set
+    if ftype == 4:  # odd/even: gap to next day with matching day-of-month parity
+        parity = 1 if str(param) == "1" else 0
+        for d in range(1, 4):  # max gap is 3 (31st -> 1st repeats parity once)
+            if (ref_date + timedelta(days=d)).day % 2 == parity:
+                return d
+        return 1
+    return 1  # type 0 (daily) and anything unknown
+
+
+def _zone_planned_seconds(wt: dict, zone_properties: dict, multiplier: int = 1) -> int:
     fixed_dur = wt.get("duration", 0)
     if fixed_dur > 0:
         return fixed_dur
@@ -127,7 +178,7 @@ def _zone_planned_seconds(wt: dict, zone_properties: dict) -> int:
     zprops = zone_properties.get(zid, {})
     ref_time = zprops.get("waterSense", {}).get("referenceTime", 0)
     if ref_time > 0:
-        return int(ref_time * wt.get("userPercentage", 1.0))
+        return int(ref_time * wt.get("userPercentage", 1.0) * multiplier)
     return 0
 
 
@@ -391,6 +442,13 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
             if freq is not None:
                 attrs["frequency"] = _frequency_label(freq, lang)
 
+            # A suggested zone's total watering time is referenceTime x
+            # userPercentage x the frequency multiplier (e.g. an every-2-days
+            # program waters 2 days' worth per run), matching the controller.
+            # Fixed durations already carry the total. Cycle & soak only splits
+            # each total into cycles with soak rest between — it never changes it.
+            freq_mult = _frequency_multiplier(freq, _next_run_date(prog))
+
             total_duration = 0
             for wt in prog.get("wateringTimes", []):
                 zid = wt["id"]
@@ -407,7 +465,7 @@ class RainMachineProgramRunSwitch(RainMachineBaseEntity, SwitchEntity):
                     seconds = fixed_dur
                 else:
                     duration_type = "suggested"
-                    seconds = _zone_planned_seconds(wt, zone_properties)
+                    seconds = _zone_planned_seconds(wt, zone_properties, freq_mult)
                 attrs[ha_name] = seconds
                 attrs[f"{ha_name}_type"] = type_labels[duration_type]
                 total_duration += seconds
