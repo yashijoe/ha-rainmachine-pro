@@ -8,7 +8,13 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, CONF_PROGRAMS, CONF_ZONES
+from .const import (
+    DOMAIN,
+    CONF_PROGRAMS,
+    CONF_ZONES,
+    START_TIME_MODE_PARAMS,
+    START_TIME_PARAMS_MODE,
+)
 from .coordinator import RainMachineProCoordinator
 from .entity import RainMachineBaseEntity
 
@@ -18,6 +24,7 @@ _FREEZE_TEMPS = [str(t) for t in range(-7, 5)]
 _FREQ_OPTIONS = ["daily", "every_n_days", "odd_days", "even_days", "selected_days"]
 _DURATION_TYPE_OPTIONS = ["suggested", "custom", "not_set"]
 _CYCLE_SOAK_OPTIONS = ["off", "auto", "custom"]
+_START_TIME_MODE_OPTIONS = list(START_TIME_MODE_PARAMS)
 
 _DAY_POS = [8, 7, 6, 5, 4, 3, 2]  # Mon(0)..Sun(6) → string position
 
@@ -97,6 +104,15 @@ async def async_setup_entry(
             hass.data[DOMAIN][cs_min_key] = soak_val // 60
 
         entities.append(RainMachineProgramCycleSoakSelect(fast_coordinator, entry, pid, name))
+
+        # Init pending sun offset state
+        sun_offset_key = f"{entry.entry_id}_prog_{pid}_sun_offset_min"
+        hass.data[DOMAIN].setdefault(sun_offset_key, 0)
+        stp = program.get("startTimeParams", {})
+        if int(stp.get("type", 0)) != 0:
+            hass.data[DOMAIN][sun_offset_key] = int(stp.get("offsetMinutes", 0))
+
+        entities.append(RainMachineProgramStartTimeModeSelect(fast_coordinator, entry, pid, name))
 
         for wt in program.get("wateringTimes", []):
             zid = wt["id"]
@@ -250,6 +266,64 @@ class RainMachineProgramCycleSoakSelect(RainMachineBaseEntity, SelectEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to set cycle soak mode for program %s: %s", self._pid, err)
+
+
+class RainMachineProgramStartTimeModeSelect(RainMachineBaseEntity, SelectEntity):
+    """Select entity for program start time mode: fixed time of day or
+    start/finish relative to sunrise/sunset."""
+
+    _attr_icon = "mdi:weather-sunset-up"
+    _attr_options = _START_TIME_MODE_OPTIONS
+    _attr_translation_key = "program_start_time_mode"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, entry, pid: int, program_name: str) -> None:
+        super().__init__(coordinator, entry)
+        self._pid = pid
+        self._attr_name = f"{program_name} start time mode"
+        self._attr_unique_id = f"{entry.entry_id}_program_{pid}_start_time_mode"
+
+    def _get_program(self) -> dict | None:
+        for prog in self.coordinator.data.get("programs", []):
+            if prog["uid"] == self._pid:
+                return prog
+        return None
+
+    @property
+    def current_option(self) -> str | None:
+        prog = self._get_program()
+        if prog is None:
+            return None
+        stp = prog.get("startTimeParams", {})
+        type_ = int(stp.get("type", 0))
+        if type_ == 0:
+            return "time_of_day"
+        sign = 1 if int(stp.get("offsetSign", -1)) >= 0 else -1
+        return START_TIME_PARAMS_MODE.get((type_, sign))
+
+    async def async_select_option(self, option: str) -> None:
+        params = START_TIME_MODE_PARAMS.get(option)
+        if params is None:
+            return
+        type_, sign = params
+        if type_ == 0:
+            minutes = 0
+        else:
+            prog = self._get_program()
+            stp = (prog or {}).get("startTimeParams", {})
+            if int(stp.get("type", 0)) != 0:
+                minutes = int(stp.get("offsetMinutes", 0))
+            else:
+                minutes = int(self.hass.data[DOMAIN].get(
+                    f"{self._entry.entry_id}_prog_{self._pid}_sun_offset_min", 0
+                ))
+        try:
+            await self.coordinator.client.action_set_program_start_time_params(
+                self._pid, type_, sign, minutes
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to set start time mode for program %s: %s", self._pid, err)
 
 
 class RainMachineProgramZoneDurationTypeSelect(RainMachineBaseEntity, SelectEntity):
