@@ -78,6 +78,19 @@
           "custom": "Personnalisée",
           "not_set": "Non définie"
         }
+      },
+      "program_start_time_mode": {
+        "state": {
+          "time_of_day": "Heure fixe",
+          "before_sunrise": "Avant le lever du soleil",
+          "after_sunrise": "Après le lever du soleil",
+          "before_sunset": "Avant le coucher du soleil",
+          "after_sunset": "Après le coucher du soleil",
+          "finish_before_sunrise": "Fin avant le lever du soleil",
+          "finish_after_sunrise": "Fin après le lever du soleil",
+          "finish_before_sunset": "Fin avant le coucher du soleil",
+          "finish_after_sunset": "Fin après le coucher du soleil"
+        }
       }
     }
   }
