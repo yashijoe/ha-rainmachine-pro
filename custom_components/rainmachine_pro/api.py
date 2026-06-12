@@ -240,11 +240,29 @@ class RainMachineClient:
             return await self._post(session, f"program/{pid}", {"wateringTimes": watering_times})
 
     async def action_set_program_start_time(self, pid: int, start_time: str) -> dict:
-        """GET full program, update startTime (HH:MM string), POST back."""
+        """GET full program, update startTime (HH:MM string), POST back.
+
+        Setting an explicit time switches the program to fixed start time mode,
+        clearing any sunrise/sunset-relative startTimeParams."""
         async with aiohttp.ClientSession() as session:
             await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
             data["startTime"] = start_time
+            data["startTimeParams"] = {"type": 0, "offsetSign": 0, "offsetMinutes": 0}
+            return await self._post(session, f"program/{pid}", data)
+
+    async def action_set_program_start_time_params(
+        self, pid: int, type_: int, offset_sign: int, offset_minutes: int
+    ) -> dict:
+        """GET full program, update startTimeParams (sun-relative start), POST back."""
+        async with aiohttp.ClientSession() as session:
+            await self.authenticate(session)
+            data = await self._get(session, f"program/{pid}")
+            data["startTimeParams"] = {
+                "type": type_,
+                "offsetSign": offset_sign,
+                "offsetMinutes": offset_minutes,
+            }
             return await self._post(session, f"program/{pid}", data)
 
     async def action_set_program_frequency(self, pid: int, freq: dict) -> dict:
