@@ -78,6 +78,19 @@
           "custom": "Benutzerdefiniert",
           "not_set": "Nicht gesetzt"
         }
+      },
+      "program_start_time_mode": {
+        "state": {
+          "time_of_day": "Uhrzeit",
+          "before_sunrise": "Vor Sonnenaufgang",
+          "after_sunrise": "Nach Sonnenaufgang",
+          "before_sunset": "Vor Sonnenuntergang",
+          "after_sunset": "Nach Sonnenuntergang",
+          "finish_before_sunrise": "Ende vor Sonnenaufgang",
+          "finish_after_sunrise": "Ende nach Sonnenaufgang",
+          "finish_before_sunset": "Ende vor Sonnenuntergang",
+          "finish_after_sunset": "Ende nach Sonnenuntergang"
+        }
       }
     }
   }
