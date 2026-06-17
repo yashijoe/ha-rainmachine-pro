@@ -503,6 +503,8 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
             "precipitation_forecast_display": f"{data.get('qpf', 0)} mm {labels['forecast']}",
             "EvapoTranspiration": data.get("et0final", 0), "EvapoTranspiration_unit": "mm",
             "EvapoTranspiration_display": f"{data.get('et0final', 0)} mm",
+            "hail_probability": round((data.get("skyCover") or 0) * 100),
+            "hail_probability_unit": "%",
             "day": data.get("day", "").split(" ")[0], "meteocode": code,
             "friendly_name": _day_label(lang, delta), "state_translated": state_translated,
             "icon": f"mdi:weather-{condition}",
