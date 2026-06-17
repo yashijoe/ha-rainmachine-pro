@@ -217,6 +217,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 - `temperature` / `min_temperature` / `max_temperature`
 - `rain` / `precipitation_forecast` — actual and forecast rainfall in mm
 - `EvapoTranspiration` — ET0 value in mm
+- `hail_probability` — maximum hourly hail probability for the day (0–100 %), sourced from iLMeteo parser hourly data via `/api/4/parser/{id}/data/`; falls back to 0 if parser not installed
 - `meteocode` / `state_translated`
 
 **Rain delay sensor** includes:
@@ -448,6 +449,7 @@ The integration polls your RainMachine's local API using two independent coordin
 | `/api/4/watering/pause` | Pause all active watering (POST) and check remaining pause time (GET) |
 | `/api/4/dailystats/details` | 7-day irrigation forecast per program |
 | `/api/4/mixer` | Forecast conditions |
+| `/api/4/parser/{id}/data/{startDate}/{nDays}` | Raw hourly parser data — used to compute max daily hail probability |
 | `/api/4/zone` | Zone list and status (includes master valve if present) |
 | `/api/4/zone/properties` | Zone WaterSense properties per zone (referenceTime, userPercentage, ETcoef) |
 | `/api/4/zone/{id}/properties` | Write zone properties per zone (active, ETcoef) |
