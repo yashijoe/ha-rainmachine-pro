@@ -129,6 +129,12 @@ class RainMachineClient:
         entries = data.get("mixerDataByDate", [])
         return entries[0] if entries else None
 
+    async def get_parser_hourly_data(
+        self, session: aiohttp.ClientSession, parser_id: int, start_date: str, n_days: int = 8
+    ) -> list:
+        data = await self._get(session, f"parser/{parser_id}/data/{start_date}/{n_days}")
+        return data.get("parserData", [])
+
     async def get_rain_delay(self, session: aiohttp.ClientSession) -> dict:
         return await self._get(session, "restrictions/raindelay")
 
@@ -414,4 +420,26 @@ class RainMachineClient:
                         data[key] = previous_data[key]
                     else:
                         data[key] = [] if key in _LIST_KEYS else {}
+            hail_by_day: dict = {}
+            try:
+                parsers = data.get("parsers", [])
+                ilmeteo = next(
+                    (p for p in parsers if "ilmeteo" in p.get("name", "").lower()), None
+                )
+                if ilmeteo:
+                    yesterday = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+                    raw = await self.get_parser_hourly_data(session, ilmeteo["uid"], yesterday, 8)
+                    for forecast in raw:
+                        for day_entry in forecast.get("dailyValues", []):
+                            day_str = day_entry.get("day", "").split(" ")[0]
+                            if not day_str:
+                                continue
+                            hourly = day_entry.get("hourlyValues", [])
+                            sky_values = [
+                                h["skyCover"] for h in hourly if h.get("skyCover") is not None
+                            ]
+                            hail_by_day[day_str] = round(max(sky_values) * 100) if sky_values else 0
+            except RainMachineApiError as err:
+                _LOGGER.warning("Failed to fetch parser hourly data for hail: %s", err)
+            data["hail_by_day"] = hail_by_day
             return data
