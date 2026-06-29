@@ -122,6 +122,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `switch.<program_name>_use_adaptive_frequency` | Enable/disable adaptive watering frequency per program (ON = 50% adaptive adjustment, OFF = 0%) |
 | `switch.rainmachine_freeze_protection` | Enable/disable freeze protection |
 | `switch.rainmachine_extra_water_on_hot_days` | Enable/disable extra watering on hot days |
+| `switch.rainmachine_rain_sensor` | Enable/disable the hardware rain sensor (`provision/useRainSensor`); **disabled by default** in entity registry — enable manually to use |
 
 ### Number
 
