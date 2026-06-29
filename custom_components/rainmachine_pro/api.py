@@ -298,6 +298,9 @@ class RainMachineClient:
             data["nextRun"] = new
             return await self._post(session, f"program/{pid}", data)
 
+    async def action_set_rain_sensor(self, enabled: bool) -> dict:
+        return await self._action("provision", {"system": {"useRainSensor": enabled}})
+
     async def action_set_global_restriction(self, payload: dict) -> dict:
         return await self._action("restrictions/global", payload)
 
