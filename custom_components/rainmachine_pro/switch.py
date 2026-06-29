@@ -241,6 +241,7 @@ async def async_setup_entry(
 
     entities.append(RainMachineFreezeProtectionSwitch(coordinator, entry))
     entities.append(RainMachineExtraWaterSwitch(coordinator, entry))
+    entities.append(RainMachineRainSensorSwitch(coordinator, entry))
 
     async_add_entities(entities)
 
@@ -728,3 +729,34 @@ class RainMachineExtraWaterSwitch(RainMachineBaseEntity, SwitchEntity):
             await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Failed to disable extra water on hot days: %s", err)
+
+
+class RainMachineRainSensorSwitch(RainMachineBaseEntity, SwitchEntity):
+    _attr_name = "Rain sensor"
+    _attr_icon = "mdi:water-check"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_rain_sensor"
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.data.get("provision", {}).get("system", {}).get(
+            "useRainSensor", False
+        )
+
+    async def async_turn_on(self, **kwargs) -> None:
+        try:
+            await self.coordinator.client.action_set_rain_sensor(True)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to enable rain sensor: %s", err)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        try:
+            await self.coordinator.client.action_set_rain_sensor(False)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to disable rain sensor: %s", err)
