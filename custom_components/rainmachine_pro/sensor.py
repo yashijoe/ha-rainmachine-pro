@@ -490,19 +490,27 @@ class RainMachineForecastSensor(RainMachineBaseEntity, SensorEntity):
             "en": {"rain": "rain", "forecast": "rain forecast"},
         }
         labels = rain_labels.get(lang, rain_labels["en"])
+        # Mixer entries can carry explicit null for a field (not just omit it),
+        # so `.get(key, 0)` still returns None -> `or 0` guards int()/formatting.
+        temp = data.get("temperature") or 0
+        min_temp = data.get("minTemp") or 0
+        max_temp = data.get("maxTemp") or 0
+        rain = data.get("rain") or 0
+        qpf = data.get("qpf") or 0
+        et0 = data.get("et0final") or 0
         return {
-            "temperature": int(data.get("temperature", 0)), "temperature_unit": "°C",
-            "temperature_display": f"{int(data.get('temperature', 0))}°",
-            "min_temperature": int(data.get("minTemp", 0)), "min_temperature_unit": "°C",
-            "min_temperature_display": f"{int(data.get('minTemp', 0))}° min",
-            "max_temperature": int(data.get("maxTemp", 0)), "max_temperature_unit": "°C",
-            "max_temperature_display": f"{int(data.get('maxTemp', 0))}° max",
-            "rain": data.get("rain", 0), "rain_unit": "mm",
-            "rain_display": f"{data.get('rain', 0)} mm {labels['rain']}",
-            "precipitation_forecast": data.get("qpf", 0), "precipitation_forecast_unit": "mm",
-            "precipitation_forecast_display": f"{data.get('qpf', 0)} mm {labels['forecast']}",
-            "EvapoTranspiration": data.get("et0final", 0), "EvapoTranspiration_unit": "mm",
-            "EvapoTranspiration_display": f"{data.get('et0final', 0)} mm",
+            "temperature": int(temp), "temperature_unit": "°C",
+            "temperature_display": f"{int(temp)}°",
+            "min_temperature": int(min_temp), "min_temperature_unit": "°C",
+            "min_temperature_display": f"{int(min_temp)}° min",
+            "max_temperature": int(max_temp), "max_temperature_unit": "°C",
+            "max_temperature_display": f"{int(max_temp)}° max",
+            "rain": rain, "rain_unit": "mm",
+            "rain_display": f"{rain} mm {labels['rain']}",
+            "precipitation_forecast": qpf, "precipitation_forecast_unit": "mm",
+            "precipitation_forecast_display": f"{qpf} mm {labels['forecast']}",
+            "EvapoTranspiration": et0, "EvapoTranspiration_unit": "mm",
+            "EvapoTranspiration_display": f"{et0} mm",
             "hail_probability": self.coordinator.data.get("hail_by_day", {}).get(
                 data.get("day", "").split(" ")[0], 0
             ),
