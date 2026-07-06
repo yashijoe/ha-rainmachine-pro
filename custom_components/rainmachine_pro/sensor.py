@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import EntityCategory, UnitOfVolume
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
@@ -172,6 +172,7 @@ async def async_setup_entry(
         )
 
     entities.append(RainMachinePauseCountdown(fast_coordinator, coordinator, entry))
+    entities.append(RainMachineFlowConsumedSensor(coordinator, entry))
 
     async_add_entities(entities)
 
@@ -914,3 +915,47 @@ class RainMachinePauseCountdown(RainMachineBaseEntity, SensorEntity):
             remaining = (self._end_time - datetime.now().astimezone()).total_seconds()
             attrs["remaining_seconds"] = max(0, int(remaining))
         return attrs
+
+
+class RainMachineFlowConsumedSensor(RainMachineBaseEntity, SensorEntity):
+    """Total water consumed measured by the flow sensor, for the Energy dashboard.
+
+    Mirrors the official integration's flow_sensor_consumed_liters:
+    liters = flowSensorWateringClicks * 1000 / flowSensorClicksPerCubicMeter.
+    Disabled by default (only relevant when a flow meter is installed).
+    """
+
+    _attr_name = "Flow sensor consumed"
+    _attr_device_class = SensorDeviceClass.WATER
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfVolume.LITERS
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+    _attr_icon = "mdi:water"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_flow_sensor_consumed_liters"
+        self.entity_id = "sensor.rainmachine_flow_sensor_consumed_liters"
+
+    def _system(self) -> dict:
+        return self.coordinator.data.get("provision", {}).get("system", {}) or {}
+
+    @property
+    def native_value(self) -> float | None:
+        system = self._system()
+        clicks = system.get("flowSensorWateringClicks")
+        clicks_per_m3 = system.get("flowSensorClicksPerCubicMeter")
+        if not clicks or not clicks_per_m3:
+            return 0.0
+        return round(clicks * 1000 / clicks_per_m3, 1)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        system = self._system()
+        return {
+            "clicks_per_cubic_meter": system.get("flowSensorClicksPerCubicMeter"),
+            "watering_clicks": system.get("flowSensorWateringClicks"),
+            "leak_clicks": system.get("flowSensorLeakClicks"),
+            "start_index": system.get("flowSensorStartIndex"),
+        }
