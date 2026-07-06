@@ -41,6 +41,7 @@ class RainMachineClient:
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._base_url = f"https://{host}:{port}/api/4"
         self._token: str | None = None
+        self._auth_lock = asyncio.Lock()
         self._ssl_context = ssl.create_default_context()
         self._ssl_context.check_hostname = False
         self._ssl_context.verify_mode = ssl.CERT_NONE
@@ -75,19 +76,45 @@ class RainMachineClient:
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise RainMachineConnectionError(f"Connection failed: {err}") from err
 
-    async def _get(self, session: aiohttp.ClientSession, path: str, query: str = "format") -> dict:
+    async def _ensure_auth(self, session: aiohttp.ClientSession) -> None:
+        """Authenticate lazily: only log in when we don't already hold a token.
+
+        Guarded by a lock so the fast + full coordinators starting together
+        don't each trigger a separate login."""
+        if not self._token:
+            async with self._auth_lock:
+                if not self._token:
+                    await self.authenticate(session)
+
+    async def _get(
+        self, session: aiohttp.ClientSession, path: str, query: str = "format", _retry: bool = True
+    ) -> dict:
+        await self._ensure_auth(session)
         url = self._url(path, query)
         try:
             async with session.get(
                 url, ssl=self._ssl_context, timeout=self._timeout,
             ) as resp:
+                if resp.status == 401 and _retry:
+                    self._token = None
+                    await self.authenticate(session)
+                    return await self._get(session, path, query, _retry=False)
                 resp.raise_for_status()
                 text = await resp.text()
                 return _parse_pre_json(text)
+        except aiohttp.ClientResponseError as err:
+            if err.status == 401 and _retry:
+                self._token = None
+                await self.authenticate(session)
+                return await self._get(session, path, query, _retry=False)
+            raise RainMachineConnectionError(f"GET {path} failed: {err}") from err
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise RainMachineConnectionError(f"GET {path} failed: {err}") from err
 
-    async def _post(self, session: aiohttp.ClientSession, path: str, payload: dict) -> dict:
+    async def _post(
+        self, session: aiohttp.ClientSession, path: str, payload: dict, _retry: bool = True
+    ) -> dict:
+        await self._ensure_auth(session)
         url = self._url(path, query="")
         headers = {"Content-Type": "application/json"}
         try:
@@ -95,9 +122,19 @@ class RainMachineClient:
                 url, data=json.dumps(payload), headers=headers,
                 ssl=self._ssl_context, timeout=self._timeout,
             ) as resp:
+                if resp.status == 401 and _retry:
+                    self._token = None
+                    await self.authenticate(session)
+                    return await self._post(session, path, payload, _retry=False)
                 resp.raise_for_status()
                 text = await resp.text()
                 return _parse_pre_json(text)
+        except aiohttp.ClientResponseError as err:
+            if err.status == 401 and _retry:
+                self._token = None
+                await self.authenticate(session)
+                return await self._post(session, path, payload, _retry=False)
+            raise RainMachineConnectionError(f"POST {path} failed: {err}") from err
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise RainMachineConnectionError(f"POST {path} failed: {err}") from err
 
@@ -178,7 +215,6 @@ class RainMachineClient:
 
     async def _action(self, path: str, payload: dict) -> dict:
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             return await self._post(session, path, payload)
 
     async def set_rain_delay(self, session: aiohttp.ClientSession, days: int) -> dict:
@@ -195,7 +231,6 @@ class RainMachineClient:
 
     async def action_set_zone_et_coef(self, uid: int, value: float) -> dict:
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             data = await self._get(session, f"zone/{uid}/properties")
             data["ETcoef"] = round(value, 4)
             return await self._post(session, f"zone/{uid}/properties", data)
@@ -220,7 +255,6 @@ class RainMachineClient:
     ) -> dict:
         """Set active/duration for a zone in a program's wateringTimes."""
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
             watering_times = data.get("wateringTimes", [])
             for wt in watering_times:
@@ -236,7 +270,6 @@ class RainMachineClient:
     ) -> dict:
         """Set userPercentage for a zone in a program's wateringTimes."""
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
             watering_times = data.get("wateringTimes", [])
             for wt in watering_times:
@@ -251,7 +284,6 @@ class RainMachineClient:
         Setting an explicit time switches the program to fixed start time mode,
         clearing any sunrise/sunset-relative startTimeParams."""
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
             data["startTime"] = start_time
             data["startTimeParams"] = {"type": 0, "offsetSign": 0, "offsetMinutes": 0}
@@ -262,7 +294,6 @@ class RainMachineClient:
     ) -> dict:
         """GET full program, update startTimeParams (sun-relative start), POST back."""
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
             data["startTimeParams"] = {
                 "type": type_,
@@ -274,7 +305,6 @@ class RainMachineClient:
     async def action_set_program_frequency(self, pid: int, freq: dict) -> dict:
         """GET full program, update frequency, POST back."""
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
             data["frequency"] = freq
             return await self._post(session, f"program/{pid}", data)
@@ -284,7 +314,6 @@ class RainMachineClient:
         the device's current nextRun, POST back. Re-phases the Every-N-days
         cycle."""
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
             cur = data.get("nextRun")
             if not cur:
@@ -327,7 +356,6 @@ class RainMachineClient:
     ) -> dict:
         """Adjust all active zone durations by +-5% of WaterSense referenceTime."""
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             data = await self._get(session, f"program/{pid}")
             watering_times = data.get("wateringTimes", [])
             for wt in watering_times:
@@ -363,22 +391,18 @@ class RainMachineClient:
 
     async def fetch_zones(self) -> list:
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             return await self.get_zones(session)
 
     async def fetch_programs(self) -> list:
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             return await self.get_programs(session)
 
     async def fetch_parsers(self) -> list:
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             return await self.get_parsers(session)
 
     async def fetch_fast_data(self) -> dict:
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             data = {}
             for key, coro in [
                 ("zones",    self.get_zones(session)),
@@ -394,7 +418,6 @@ class RainMachineClient:
 
     async def fetch_all_data(self, previous_data: dict | None = None) -> dict:
         async with aiohttp.ClientSession() as session:
-            await self.authenticate(session)
             data = {}
             _LIST_KEYS = {"parsers", "zones", "programs", "queue", "dailystats_details"}
             for key, coro in [
