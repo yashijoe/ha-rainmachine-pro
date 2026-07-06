@@ -94,6 +94,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 | `sensor.<zone>_run_countdown` | Remaining time for currently running zone (`M:SS`); `null` when idle | — | — |
 | `sensor.<program>_run_countdown` | Remaining time for currently running program (`M:SS`); `null` when idle | — | — |
 | `sensor.rainmachine_pause_countdown` | Live countdown of remaining pause time as `M:SS`; `null` when not paused or when a zone starts running | — | — |
+| `sensor.rainmachine_flow_sensor_consumed_liters` | Total water consumed by the flow meter (for the Energy/water dashboard); `device_class: water`, `state_class: total_increasing`. **Disabled by default** — enable when a flow meter is installed | L | `total_increasing` |
 | `sensor.rainmachine_<program>_irrigation_forecast_y` | Yesterday's actual irrigation for the program (total `userDuration` in seconds) | — | — |
 | `sensor.rainmachine_<program>_irrigation_forecast_0` … `_6` | 7-day irrigation forecast for the program (day 0 = today … day 6); state = total `scheduledWateringTime` in seconds | — | — |
 
