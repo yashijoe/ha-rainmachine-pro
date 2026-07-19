@@ -49,6 +49,8 @@ FLAG_MAP = {
         10: "Delay set by user",
         11: "Program rain restriction",
         12: "Adaptive frequency skip",
+        14: "Snooze (rain rule)",
+        15: "Snooze (rain sensor)",
         -1: "No watering",
     },
     "it": {
@@ -65,6 +67,8 @@ FLAG_MAP = {
         10: "Ritardo impostato dall'utente",
         11: "Restrizione pioggia del programma",
         12: "Saltato per frequenza adattiva",
+        14: "Snooze (regola pioggia)",
+        15: "Snooze (sensore pioggia)",
         -1: "Nessuna irrigazione",
     },
     "de": {
@@ -81,6 +85,8 @@ FLAG_MAP = {
         10: "Vom Benutzer gesetzte Verzögerung",
         11: "Programm-Regeneinschränkung",
         12: "Adaptive Frequenz übersprungen",
+        14: "Snooze (Regenregel)",
+        15: "Snooze (Regensensor)",
         -1: "Keine Bewässerung",
     },
     "fr": {
@@ -97,6 +103,8 @@ FLAG_MAP = {
         10: "Délai défini par l'utilisateur",
         11: "Restriction pluie du programme",
         12: "Saut fréquence adaptative",
+        14: "Snooze (règle de pluie)",
+        15: "Snooze (capteur de pluie)",
         -1: "Pas d'arrosage",
     },
     "es": {
@@ -113,6 +121,8 @@ FLAG_MAP = {
         10: "Retraso establecido por el usuario",
         11: "Restricción de lluvia del programa",
         12: "Salto de frecuencia adaptativa",
+        14: "Snooze (regla de lluvia)",
+        15: "Snooze (sensor de lluvia)",
         -1: "Sin riego",
     },
 }
