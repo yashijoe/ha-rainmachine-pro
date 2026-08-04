@@ -102,6 +102,7 @@ Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Conf
 
 | Entity | Description |
 |--------|-------------|
+| `binary_sensor.rainmachine_watering_active` | ON while any zone is watering — manual, program or single-zone run (`device_class: running`; attributes: active zones, program, remaining seconds). Updates on the fast poll interval. **Disabled by default** |
 | `binary_sensor.rainmachine_freeze_restriction` | Active freeze restriction |
 | `binary_sensor.rainmachine_hourly_restriction` | Active hourly restriction |
 | `binary_sensor.rainmachine_month_restriction` | Active month restriction |

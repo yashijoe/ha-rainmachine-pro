@@ -24,8 +24,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up binary sensors from a config entry."""
     coordinator: RainMachineProCoordinator = hass.data[DOMAIN][entry.entry_id]
+    fast_coordinator = hass.data[DOMAIN][f"{entry.entry_id}_fast"]
 
     async_add_entities([
+        RainMachineWateringActiveBinary(fast_coordinator, entry),
         RainMachineFlowSensorBinary(coordinator, entry),
         RainMachineFreezeRestriction(coordinator, entry),
         RainMachineHourlyRestriction(coordinator, entry),
@@ -42,6 +44,53 @@ class _RainMachineBinaryBase(RainMachineBaseEntity, BinarySensorEntity):
     def __init__(self, coordinator, entry, unique_suffix: str) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_{unique_suffix}"
+
+
+class RainMachineWateringActiveBinary(_RainMachineBinaryBase):
+    """Binary sensor: ON while any zone is watering (manual, program or single zone).
+
+    Rides the fast coordinator so it tracks the same queue data (and the same
+    latency) as the zone run switches.
+    """
+
+    _attr_name = "Watering active"
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+    _attr_icon = "mdi:sprinkler-variant"
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "watering_active")
+
+    def _running_items(self) -> list:
+        return [
+            item
+            for item in self.coordinator.data.get("queue", [])
+            if item.get("running")
+        ]
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self._running_items())
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        running = self._running_items()
+        zone_names = {
+            z.get("uid"): z.get("name")
+            for z in self.coordinator.data.get("zones", [])
+        }
+        program_names = {
+            p.get("uid"): p.get("name")
+            for p in self.coordinator.data.get("programs", [])
+        }
+        attrs = {
+            "zones": [zone_names.get(item.get("zid"), item.get("zid")) for item in running],
+        }
+        if running:
+            pid = running[0].get("pid")
+            attrs["program"] = program_names.get(pid, "manual") if pid else "manual"
+            attrs["remaining"] = max((item.get("remaining", 0) for item in running), default=0)
+        return attrs
 
 
 class RainMachineFlowSensorBinary(_RainMachineBinaryBase):
