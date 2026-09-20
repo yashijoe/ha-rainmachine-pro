@@ -24,15 +24,34 @@
       "parsers": {
         "title": "Configuration des parseurs météo",
         "description": "Sélectionnez les parseurs météo à exposer comme entités dans Home Assistant. Les parseurs ayant déjà été exécutés sont activés par défaut."
+      },
+      "reconfigure": {
+        "title": "Reconfigurer RainMachine",
+        "description": "Mettez à jour les informations de connexion du RainMachine actuellement à l'adresse {host}, par exemple après un changement d'adresse IP. Laissez le mot de passe vide pour conserver l'actuel. Les entités et l'historique sont conservés.",
+        "data": {
+          "host": "Hôte (adresse IP)",
+          "port": "Port",
+          "password": "Mot de passe (vide = conserver l'actuel)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Ré-authentifier RainMachine",
+        "description": "Le RainMachine à l'adresse {host} a refusé le mot de passe enregistré. Saisissez le mot de passe actuel.",
+        "data": {
+          "password": "Mot de passe"
+        }
       }
     },
     "error": {
       "cannot_connect": "Impossible de se connecter à RainMachine. Vérifiez l'adresse IP et le port.",
       "invalid_auth": "Mot de passe incorrect.",
-      "unknown": "Erreur inattendue."
+      "unknown": "Erreur inattendue.",
+      "already_configured": "Une autre entrée RainMachine utilise déjà cet hôte."
     },
     "abort": {
-      "already_configured": "Ce RainMachine est déjà configuré."
+      "already_configured": "Ce RainMachine est déjà configuré.",
+      "reconfigure_successful": "Informations de connexion mises à jour.",
+      "reauth_successful": "Mot de passe mis à jour."
     }
   },
   "options": {

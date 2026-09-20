@@ -4,9 +4,10 @@ import logging
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import RainMachineClient, RainMachineApiError
+from .api import RainMachineClient, RainMachineApiError, RainMachineAuthError
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,6 +35,9 @@ class RainMachineProCoordinator(DataUpdateCoordinator):
         """Fetch data from RainMachine."""
         try:
             return await self.client.fetch_all_data(previous_data=self.data)
+        except RainMachineAuthError as err:
+            # Starts the reauth flow (Settings -> "Re-authenticate" notification)
+            raise ConfigEntryAuthFailed(f"RainMachine rejected the password: {err}") from err
         except RainMachineApiError as err:
             raise UpdateFailed(f"Error fetching RainMachine data: {err}") from err
 
@@ -60,5 +64,7 @@ class RainMachineProFastCoordinator(DataUpdateCoordinator):
         """Fetch fast data from RainMachine."""
         try:
             return await self.client.fetch_fast_data()
+        except RainMachineAuthError as err:
+            raise ConfigEntryAuthFailed(f"RainMachine rejected the password: {err}") from err
         except RainMachineApiError as err:
             raise UpdateFailed(f"Fast update failed: {err}") from err

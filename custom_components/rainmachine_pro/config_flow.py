@@ -2,6 +2,7 @@
 
 import logging
 import re
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -234,6 +235,122 @@ class RainMachineProConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="parsers",
             data_schema=vol.Schema(schema_dict),
             description_placeholders={"parser_count": str(len(self._available_parsers))},
+        )
+
+    # -------------------------------------------------------------------------
+    # Reconfigure (new IP / port / password) and re-authentication
+    # -------------------------------------------------------------------------
+
+    def _reconfigure_entry(self) -> ConfigEntry:
+        """Return the config entry this reconfigure/reauth flow acts on."""
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        assert entry is not None
+        return entry
+
+    def _host_used_by_other_entry(self, host: str, current_entry_id: str) -> bool:
+        """Return True if a different entry already points at this host."""
+        return any(
+            entry.entry_id != current_entry_id and entry.data.get(CONF_HOST) == host
+            for entry in self._async_current_entries(include_ignore=False)
+        )
+
+    async def _async_check_credentials(
+        self, host: str, port: int, password: str, timeout: int, errors: dict[str, str]
+    ) -> bool:
+        """Try to log in. Fill ``errors`` and return False on failure."""
+        client = RainMachineClient(host, port, password, timeout)
+        try:
+            await client.test_connection()
+        except RainMachineAuthError:
+            errors["base"] = "invalid_auth"
+        except RainMachineConnectionError:
+            errors["base"] = "cannot_connect"
+        except Exception:
+            _LOGGER.exception("Unexpected exception")
+            errors["base"] = "unknown"
+        return not errors
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Change host, port or password of an existing entry (e.g. new IP address).
+
+        Entities and the device are keyed on the entry id, so nothing is lost:
+        the entry is updated in place and reloaded.
+        """
+        entry = self._reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            host = user_input[CONF_HOST].strip()
+            port = user_input[CONF_PORT]
+            # Empty password field = keep the stored one
+            password = user_input.get(CONF_PASSWORD) or entry.data[CONF_PASSWORD]
+            timeout = entry.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
+
+            if self._host_used_by_other_entry(host, entry.entry_id):
+                errors["base"] = "already_configured"
+            elif await self._async_check_credentials(host, port, password, timeout, errors):
+                old_host = entry.data[CONF_HOST]
+                title = entry.title
+                if title == f"RainMachine ({old_host})":
+                    title = f"RainMachine ({host})"
+                return self.async_update_reload_and_abort(
+                    entry,
+                    unique_id=f"rainmachine_pro_{host}",
+                    title=title,
+                    data={
+                        **entry.data,
+                        CONF_HOST: host,
+                        CONF_PORT: port,
+                        CONF_PASSWORD: password,
+                    },
+                    reason="reconfigure_successful",
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST, default=entry.data[CONF_HOST]): str,
+                    vol.Required(
+                        CONF_PORT, default=entry.data.get(CONF_PORT, DEFAULT_PORT)
+                    ): int,
+                    vol.Optional(CONF_PASSWORD): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={"host": entry.data[CONF_HOST]},
+        )
+
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> FlowResult:
+        """Start re-authentication after the device rejected the stored password."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Ask for the new password, verify it and store it."""
+        entry = self._reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            password = user_input[CONF_PASSWORD]
+            timeout = entry.options.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
+            if await self._async_check_credentials(
+                entry.data[CONF_HOST], entry.data[CONF_PORT], password, timeout, errors
+            ):
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={**entry.data, CONF_PASSWORD: password},
+                    reason="reauth_successful",
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
+            errors=errors,
+            description_placeholders={"host": entry.data[CONF_HOST]},
         )
 
     @staticmethod

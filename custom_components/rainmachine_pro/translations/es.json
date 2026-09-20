@@ -24,15 +24,34 @@
       "parsers": {
         "title": "Configuración de parsers meteorológicos",
         "description": "Selecciona los parsers meteorológicos que quieres exponer como entidades en Home Assistant. Los parsers que ya han ejecutado están activados por defecto."
+      },
+      "reconfigure": {
+        "title": "Reconfigurar RainMachine",
+        "description": "Actualiza los datos de conexión del RainMachine que está actualmente en {host}, por ejemplo tras un cambio de dirección IP. Deja la contraseña vacía para mantener la actual. Las entidades y el historial se conservan.",
+        "data": {
+          "host": "Host (dirección IP)",
+          "port": "Puerto",
+          "password": "Contraseña (vacía = mantener la actual)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Volver a autenticar RainMachine",
+        "description": "El RainMachine en {host} ha rechazado la contraseña guardada. Introduce la contraseña actual.",
+        "data": {
+          "password": "Contraseña"
+        }
       }
     },
     "error": {
       "cannot_connect": "No se puede conectar a RainMachine. Verifica la IP y el puerto.",
       "invalid_auth": "Contraseña incorrecta.",
-      "unknown": "Error inesperado."
+      "unknown": "Error inesperado.",
+      "already_configured": "Otra entrada de RainMachine ya usa este host."
     },
     "abort": {
-      "already_configured": "Este RainMachine ya está configurado."
+      "already_configured": "Este RainMachine ya está configurado.",
+      "reconfigure_successful": "Datos de conexión actualizados.",
+      "reauth_successful": "Contraseña actualizada."
     }
   },
   "options": {

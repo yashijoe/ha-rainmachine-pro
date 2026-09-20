@@ -38,10 +38,11 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 - **Reboot button** — reboot the controller directly from Home Assistant
 - **Fully configurable from UI** — no YAML needed
 - **Multi-language** — English, Italian, French, German, and Spanish translations included
+- **Reconfigure & re-authenticate** — change the controller's IP, port or password from the integration menu without removing it; entities, history and customizations are kept
 
 ## Requirements
 
-- Home Assistant 2024.1.0 or newer
+- Home Assistant 2024.4.0 or newer
 - A RainMachine controller accessible on your local network
 - The RainMachine API must be reachable via HTTPS (default port 8080)
 
@@ -78,6 +79,14 @@ A custom Home Assistant integration for **RainMachine** smart irrigation control
 ### Options (post-setup)
 
 Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **Configure** to change update intervals, timeout, zone/program names, and parser configuration.
+
+### Reconfigure (new IP address, port or password)
+
+Go to **Settings** → **Devices & Services** → **RainMachine Pro** → **⋮** → **Reconfigure** to change the host, port or password of an already configured controller — for example after your router assigned it a new IP address. The connection is tested before saving, then the integration reloads with the new settings. All entities, their history and any customizations (names, areas, dashboards) are preserved; there is no need to remove and re-add the integration. Leave the password field empty to keep the current one.
+
+### Re-authentication
+
+If the controller starts rejecting the stored password (for example after you changed it in the RainMachine app), Home Assistant shows a **Re-authenticate** notification on the integration. Enter the new password there; the integration resumes immediately.
 
 ## Entities
 
@@ -468,9 +477,9 @@ The integration polls your RainMachine's local API using two independent coordin
 
 ## Troubleshooting
 
-**"Unable to connect"** — Verify your RainMachine IP and port. Try opening `https://<IP>:8080` in a browser.
+**"Unable to connect"** — Verify your RainMachine IP and port. Try opening `https://<IP>:8080` in a browser. If the controller's IP address changed, use **⋮** → **Reconfigure** on the integration to enter the new one — do not remove the integration.
 
-**"Invalid password"** — Same password used in the RainMachine app.
+**"Invalid password"** — Same password used in the RainMachine app. If you changed it after setup, Home Assistant asks you to re-authenticate; you can also update it via **⋮** → **Reconfigure**.
 
 **Zone sensors show 0** — Normal if no watering occurred today.
 

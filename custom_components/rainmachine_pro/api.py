@@ -72,7 +72,12 @@ class RainMachineClient:
                     raise RainMachineAuthError("No access token received")
                 return True
         except aiohttp.ClientResponseError as err:
-            raise RainMachineAuthError(f"Auth failed: {err.status}") from err
+            # The device answers 401 to a wrong password. Anything else
+            # (5xx while booting, a proxy page, ...) is a transport problem,
+            # not a credentials one, and must not trigger re-authentication.
+            if err.status in (401, 403):
+                raise RainMachineAuthError(f"Auth failed: {err.status}") from err
+            raise RainMachineConnectionError(f"Auth request failed: {err.status}") from err
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise RainMachineConnectionError(f"Connection failed: {err}") from err
 
@@ -411,6 +416,8 @@ class RainMachineClient:
             ]:
                 try:
                     data[key] = await coro
+                except RainMachineAuthError:
+                    raise
                 except RainMachineApiError as err:
                     _LOGGER.warning("Fast fetch %s failed: %s", key, err)
                     data[key] = []
@@ -440,6 +447,8 @@ class RainMachineClient:
             ]:
                 try:
                     data[key] = await coro
+                except RainMachineAuthError:
+                    raise
                 except RainMachineApiError as err:
                     _LOGGER.warning("Failed to fetch %s: %s", key, err)
                     if previous_data and key in previous_data:
@@ -465,6 +474,8 @@ class RainMachineClient:
                                 h["skyCover"] for h in hourly if h.get("skyCover") is not None
                             ]
                             hail_by_day[day_str] = round(max(sky_values) * 100) if sky_values else 0
+            except RainMachineAuthError:
+                raise
             except RainMachineApiError as err:
                 _LOGGER.warning("Failed to fetch parser hourly data for hail: %s", err)
             data["hail_by_day"] = hail_by_day
